@@ -1,0 +1,11 @@
+# Configuração do Cloudflare Pages para o AutoBot Facebook
+name = "autobot"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".vercel/output/static"
+
+# Variáveis de ambiente públicas (opcional colocar aqui)
+# Chaves sensíveis (como SUPABASE_SERVICE_ROLE_KEY) devem ser colocadas
+# diretamente no painel do Cloudflare (Settings > Environment Variables)
+[vars]
+NODE_VERSION = "20"
