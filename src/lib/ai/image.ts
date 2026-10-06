@@ -49,7 +49,7 @@ function getUuid(): string {
  * Generate image using Google Gemini (Imagen 3 / 4) predict endpoint.
  */
 async function fetchGeminiImagenPredict(prompt: string, apiKey: string): Promise<Blob> {
-  const models = ["imagen-3.0-generate-002", "imagen-4.0-generate-001"];
+  const models = ["imagen-4.0-generate-001", "imagen-4.0-fast-generate-001", "imagen-3.0-generate-002"];
   let lastErr: Error | null = null;
 
   for (const model of models) {

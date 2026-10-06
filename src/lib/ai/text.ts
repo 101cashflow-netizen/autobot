@@ -92,10 +92,53 @@ async function chatCompletion(
 }
 
 async function geminiCompletion(topic: string, apiKey: string): Promise<string> {
-  const models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"];
+  const preferredModels = [
+    "gemini-3.5-flash-lite",
+    "gemini-3.8-flash",
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+  ];
+
+  let modelsToTry = [...preferredModels];
+
+  // Dynamically query available models from Google AI Studio if accessible
+  try {
+    const listRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+      { signal: AbortSignal.timeout(6000) }
+    );
+    if (listRes.ok) {
+      const listData = await listRes.json();
+      const available: string[] = (listData?.models || [])
+        .filter((m: { supportedGenerationMethods?: string[] }) =>
+          m.supportedGenerationMethods?.includes("generateContent")
+        )
+        .map((m: { name: string }) => m.name.replace(/^models\//, ""))
+        .filter(
+          (name: string) =>
+            name.startsWith("gemini-") &&
+            !name.includes("image") &&
+            !name.includes("tts") &&
+            !name.includes("audio") &&
+            !name.includes("live") &&
+            !name.includes("embedding")
+        );
+
+      if (available.length > 0) {
+        const matched = preferredModels.filter((m) => available.includes(m));
+        const others = available.filter((m) => !matched.includes(m));
+        modelsToTry = [...matched, ...others];
+      }
+    }
+  } catch {
+    // If listing models fails, use preferredModels
+  }
+
   let lastError: Error | null = null;
 
-  for (const model of models) {
+  for (const model of modelsToTry) {
     try {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
