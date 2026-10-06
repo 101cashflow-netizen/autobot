@@ -38,8 +38,8 @@ create table if not exists app_settings (
   groq_enabled boolean not null default true,
   pollinations_enabled boolean not null default true,
   copy_language text default 'auto',              -- 'auto' | 'pt' | 'en' | 'es'
-  copy_length text default 'medium',              -- 'short' | 'medium' | 'long'
-  copy_tone text default 'conversational',        -- 'conversational' | 'persuasive' | 'informative' | 'inspirational' | 'humorous' | 'professional'
+  copy_length text default 'medium',              -- 'short' | 'medium' | 'long' | 'random'
+  copy_tone text default 'conversational',        -- 'conversational' | 'persuasive' | 'informative' | 'inspirational' | 'humorous' | 'professional' | 'random'
   copy_custom_rules text default '',
   image_source text not null default 'ai',        -- 'ai' | 'stock' | 'mixed'
   utm_suffix text default '',

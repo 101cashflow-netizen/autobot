@@ -105,14 +105,15 @@ export type ContentProvider = "groq" | "gemini" | "pollinations" | "template";
 export type TextAiProviderPref = "auto" | "gemini" | "groq" | "pollinations";
 
 export type CopyLanguage = "auto" | "pt" | "en" | "es";
-export type CopyLength = "short" | "medium" | "long";
+export type CopyLength = "short" | "medium" | "long" | "random";
 export type CopyTone =
   | "conversational"
   | "persuasive"
   | "informative"
   | "inspirational"
   | "humorous"
-  | "professional";
+  | "professional"
+  | "random";
 
 export interface CopyGuidelines {
   language?: CopyLanguage;

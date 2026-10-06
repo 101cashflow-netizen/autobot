@@ -261,9 +261,9 @@ const ContentBody = z.object({
   topic: z.string().trim().min(2).max(200),
   provider: z.enum(["auto", "gemini", "groq", "pollinations"]).optional(),
   language: z.enum(["auto", "pt", "en", "es"]).optional(),
-  length: z.enum(["short", "medium", "long"]).optional(),
+  length: z.enum(["short", "medium", "long", "random"]).optional(),
   tone: z
-    .enum(["conversational", "persuasive", "informative", "inspirational", "humorous", "professional"])
+    .enum(["conversational", "persuasive", "informative", "inspirational", "humorous", "professional", "random"])
     .optional(),
   customRules: z.string().max(1000).optional(),
 });
@@ -512,9 +512,9 @@ const SettingsBody = z.object({
   groq_enabled: z.boolean().optional(),
   pollinations_enabled: z.boolean().optional(),
   copy_language: z.enum(["auto", "pt", "en", "es"]).optional(),
-  copy_length: z.enum(["short", "medium", "long"]).optional(),
+  copy_length: z.enum(["short", "medium", "long", "random"]).optional(),
   copy_tone: z
-    .enum(["conversational", "persuasive", "informative", "inspirational", "humorous", "professional"])
+    .enum(["conversational", "persuasive", "informative", "inspirational", "humorous", "professional", "random"])
     .optional(),
   copy_custom_rules: z.string().max(1000).optional(),
   image_source: z.enum(["ai", "stock", "mixed"]).optional(),

@@ -467,9 +467,10 @@ export default function GeneratePage() {
               className="rounded-xl border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary"
               aria-label="Tamanho da Copy"
             >
+              <option value="random">🎲 Aleatório</option>
               <option value="short">Curto (1-2 frases)</option>
-              <option value="medium">Médio (2-4 frases)</option>
-              <option value="long">Longo (Storytelling)</option>
+              <option value="medium">Médio (2-3 frases)</option>
+              <option value="long">Longo (até 500 carac.)</option>
             </select>
           </div>
 
@@ -481,6 +482,7 @@ export default function GeneratePage() {
               className="rounded-xl border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary"
               aria-label="Tom de Voz"
             >
+              <option value="random">🎲 Aleatório</option>
               <option value="conversational">Conversacional</option>
               <option value="persuasive">Persuasivo / Vendas</option>
               <option value="informative">Informativo / Educativo</option>

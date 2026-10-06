@@ -792,9 +792,10 @@ function SettingsForm() {
                     onChange={(e) => setCopyLength(e.target.value as CopyLength)}
                     className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                   >
+                    <option value="random">🎲 Aleatório (Variar a cada post)</option>
                     <option value="short">Curto (1-2 frases impactantes)</option>
-                    <option value="medium">Médio (2-4 frases / Padrão)</option>
-                    <option value="long">Longo (Storytelling 4-7 frases)</option>
+                    <option value="medium">Médio (2-3 frases / Padrão)</option>
+                    <option value="long">Longo (Storytelling até 500 carac.)</option>
                   </select>
                 </div>
 
@@ -808,6 +809,7 @@ function SettingsForm() {
                     onChange={(e) => setCopyTone(e.target.value as CopyTone)}
                     className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                   >
+                    <option value="random">🎲 Aleatório (Variar estilos a cada post)</option>
                     <option value="conversational">Conversacional (Amigável &amp; Natural)</option>
                     <option value="persuasive">Persuasivo / Vendas (Foco em conversão &amp; CTA)</option>
                     <option value="informative">Informativo / Educativo (Dicas práticas)</option>

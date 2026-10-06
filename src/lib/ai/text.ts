@@ -20,8 +20,23 @@ import type {
 
 export function buildSystemPrompt(guidelines: CopyGuidelines): string {
   const lang = guidelines.language || "auto";
-  const length = guidelines.length || "medium";
-  const tone = guidelines.tone || "conversational";
+
+  const length =
+    guidelines.length === "random"
+      ? (["short", "medium", "long"] as const)[Math.floor(Math.random() * 3)]
+      : guidelines.length || "medium";
+
+  const tone =
+    guidelines.tone === "random"
+      ? ([
+          "conversational",
+          "persuasive",
+          "informative",
+          "inspirational",
+          "humorous",
+          "professional",
+        ] as const)[Math.floor(Math.random() * 6)]
+      : guidelines.tone || "conversational";
 
   const langRule = (() => {
     switch (lang) {
@@ -42,10 +57,10 @@ export function buildSystemPrompt(guidelines: CopyGuidelines): string {
       case "short":
         return "- description length: Short and punchy. Exactly 1-2 impactful sentences, <= 180 characters total. Designed for rapid mobile consumption.";
       case "long":
-        return "- description length: Long-form storytelling. 4 to 7 rich sentences, <= 650 characters. Provide context, value, narrative, and a memorable takeaway.";
+        return "- description length: Long-form storytelling, STRICT MAXIMUM OF 500 CHARACTERS TOTAL. Exactly 3 to 5 rich sentences, narrative, value, and insights. Under NO circumstance should the description exceed 500 characters.";
       case "medium":
       default:
-        return "- description length: Medium format. 2-4 short sentences, <= 400 characters, written to be read on a phone.";
+        return "- description length: Medium format. 2-3 short sentences, <= 350 characters, written to be read on a mobile phone.";
     }
   })();
 
@@ -82,7 +97,8 @@ ${langRule}
 ${lengthRule}
 ${toneRule}
 - engagement: End the description with a question or a soft call to action that invites comments, since engagement drives Facebook reach.
-- hashtags: 3 to 5 short, highly relevant hashtags, lowercase, no "#" symbol, no spaces. Facebook rewards a few precise tags, not a wall of them.${customRule}
+- hashtags: 3 to 5 short, highly relevant hashtags, lowercase, no "#" symbol, no spaces. Facebook rewards a few precise tags, not a wall of them.
+- character limit: The description field MUST NEVER exceed 500 characters.${customRule}
 - Output ONLY the JSON object. No markdown fences, no commentary.`;
 }
 
@@ -107,9 +123,15 @@ function parseContent(raw: string): GeneratedContent {
   ) {
     throw new Error("Malformed generation payload");
   }
+
+  let desc = o.description.trim();
+  if (desc.length > 500) {
+    desc = desc.slice(0, 497).trim() + "...";
+  }
+
   return {
-    title: o.title.trim(),
-    description: o.description.trim(),
+    title: o.title.trim().slice(0, 120),
+    description: desc,
     hashtags: (o.hashtags as string[]).map((h) => h.replace(/^#/, "").trim()).filter(Boolean),
   };
 }
