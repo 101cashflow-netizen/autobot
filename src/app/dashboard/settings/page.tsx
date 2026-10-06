@@ -17,6 +17,7 @@ import {
   VideoCamera,
   Robot,
   Camera,
+  Lightning,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,8 @@ interface SettingsState {
   default_page_name: string | null;
   gemini_api_key_set?: boolean;
   gemini_configured_source?: "database" | "env" | "none";
+  groq_api_key_set?: boolean;
+  groq_configured_source?: "database" | "env" | "none";
   text_provider_pref?: TextAiProviderPref;
   gemini_enabled?: boolean;
   groq_enabled?: boolean;
@@ -102,6 +105,11 @@ function SettingsForm() {
   const [savingGeminiKey, setSavingGeminiKey] = useState(false);
   const [geminiKeyError, setGeminiKeyError] = useState<string | null>(null);
   const [geminiKeySaved, setGeminiKeySaved] = useState(false);
+
+  const [groqKeyInput, setGroqKeyInput] = useState("");
+  const [savingGroqKey, setSavingGroqKey] = useState(false);
+  const [groqKeyError, setGroqKeyError] = useState<string | null>(null);
+  const [groqKeySaved, setGroqKeySaved] = useState(false);
 
   const [textProviderPref, setTextProviderPref] = useState<TextAiProviderPref>("auto");
   const [geminiEnabled, setGeminiEnabled] = useState(true);
@@ -254,6 +262,33 @@ function SettingsForm() {
       setGeminiKeyError(err instanceof Error ? err.message : "Erro ao salvar chave.");
     } finally {
       setSavingGeminiKey(false);
+    }
+  }
+
+  async function saveGroqKey() {
+    setGroqKeyError(null);
+    setGroqKeySaved(false);
+    if (!groqKeyInput.trim() && !settings?.groq_api_key_set) {
+      setGroqKeyError("Informe sua chave Groq API.");
+      return;
+    }
+    setSavingGroqKey(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ groq_api_key: groqKeyInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro ao salvar chave da Groq.");
+      setSettings((s) => (s ? { ...s, ...data } : s));
+      setGroqKeyInput("");
+      setGroqKeySaved(true);
+      setTimeout(() => setGroqKeySaved(false), 3000);
+    } catch (err) {
+      setGroqKeyError(err instanceof Error ? err.message : "Erro ao salvar chave da Groq.");
+    } finally {
+      setSavingGroqKey(false);
     }
   }
 
@@ -733,9 +768,15 @@ function SettingsForm() {
                 <div className="pr-4">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-foreground">Groq (Llama 3)</span>
-                    <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                      Variável GROQ_API_KEY
-                    </span>
+                    {settings.groq_api_key_set ? (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">
+                        <CheckCircle size={11} /> Chave salva
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
+                        Sem chave
+                      </span>
+                    )}
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     Geração ultra rápida via nuvem da Groq.
@@ -962,6 +1003,72 @@ function SettingsForm() {
             )}
             {geminiKeySaved && (
               <p className="mt-2 text-xs font-medium text-success">Chave salva com sucesso! ✓</p>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* Groq AI (Llama 3 Copywriting) */}
+      <Card>
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-500/10 text-orange-600 dark:text-orange-400">
+            <Lightning size={22} weight="fill" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-heading font-bold text-foreground">Groq AI (Llama 3 Copywriting Ultra-Rápido)</h2>
+              {settings.groq_api_key_set ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2.5 py-0.5 text-xs font-medium text-success">
+                  <CheckCircle size={13} />
+                  {settings.groq_configured_source === "env"
+                    ? "Configurada via Variável de Ambiente"
+                    : "Configurada e Salva no Banco"}
+                </span>
+              ) : (
+                <span className="rounded-full bg-warning/10 px-2.5 py-0.5 text-xs font-medium text-warning">
+                  Chave não configurada
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              A Groq oferece inferência ultra rápida com os modelos de ponta Llama 3.3 70B e Llama 3.1 8B da Meta.
+              Excelente para redação de posts dinâmicos, magnéticos e com respostas em milissegundos.
+              Obtenha sua chave gratuita no{" "}
+              <a
+                href="https://console.groq.com/keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-primary hover:underline"
+              >
+                Groq Console ↗
+              </a>.
+            </p>
+
+            <div className="mt-4">
+              <label className="text-xs font-semibold text-muted-foreground">Chave de API da Groq (GROQ_API_KEY)</label>
+              <div className="mt-1 flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="password"
+                  value={groqKeyInput}
+                  onChange={(e) => setGroqKeyInput(e.target.value)}
+                  placeholder={
+                    settings.groq_api_key_set
+                      ? "•••• chave configurada — digite para substituir"
+                      : "Cole aqui sua chave (ex: gsk_...)"
+                  }
+                  className="flex-1 rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                />
+                <Button size="sm" onClick={saveGroqKey} disabled={savingGroqKey}>
+                  {savingGroqKey ? "Salvando…" : "Salvar chave da Groq"}
+                </Button>
+              </div>
+            </div>
+
+            {groqKeyError && (
+              <p className="mt-2 text-xs text-destructive">{groqKeyError}</p>
+            )}
+            {groqKeySaved && (
+              <p className="mt-2 text-xs font-medium text-success">Chave da Groq salva com sucesso! ✓</p>
             )}
           </div>
         </div>

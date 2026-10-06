@@ -28,6 +28,7 @@ create table if not exists app_settings (
   default_page_name text,
   default_page_token text,
   gemini_api_key text,
+  groq_api_key text,
   avatar_enabled boolean not null default true,
   avatar_name text default 'Nasha',
   avatar_prompt text,
@@ -129,6 +130,7 @@ alter table app_settings add column if not exists facebook_app_secret text;
 alter table app_settings add column if not exists facebook_config_id text;
 alter table app_settings add column if not exists topic_source text not null default 'mine';
 alter table app_settings add column if not exists gemini_api_key text;
+alter table app_settings add column if not exists groq_api_key text;
 alter table app_settings add column if not exists avatar_enabled boolean not null default true;
 alter table app_settings add column if not exists avatar_name text default 'Nasha';
 alter table app_settings add column if not exists avatar_prompt text;

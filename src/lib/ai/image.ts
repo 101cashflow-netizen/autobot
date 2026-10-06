@@ -26,13 +26,15 @@ const PHOTO_STYLE =
   "candid photograph, authentic portrait of real person, 85mm lens, natural daylight, sharp focus on eyes, realistic human skin texture, natural pores, authentic lighting, no blur, no drawing, no cartoon, no anime, no painting, no illustration, no 3D render, no CGI, no smooth plastic skin, no watermark, no text";
 
 function b64ToBlob(b64Data: string, contentType = "image/jpeg"): Blob {
+  const cleanB64 = b64Data.replace(/^data:[^;]+;base64,/, "").trim();
   if (typeof Buffer !== "undefined") {
-    const buffer = Buffer.from(b64Data, "base64");
+    const buffer = Buffer.from(cleanB64, "base64");
     return new Blob([buffer], { type: contentType });
   }
-  const binaryString = atob(b64Data);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
+  const binaryString = atob(cleanB64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
     bytes[i] = binaryString.charCodeAt(i);
   }
   return new Blob([bytes], { type: contentType });
@@ -67,6 +69,16 @@ async function fetchCloudflareFluxImage(prompt: string, accountId: string, apiTo
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
     throw new Error(`Cloudflare Workers AI FLUX erro (${res.status}): ${errText}`);
+  }
+
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    const data = await res.json();
+    const b64 = data?.result?.image;
+    if (!b64 || typeof b64 !== "string") {
+      throw new Error("Cloudflare Workers AI FLUX não retornou a imagem em result.image");
+    }
+    return b64ToBlob(b64, "image/jpeg");
   }
 
   return res.blob();

@@ -320,11 +320,12 @@ async function providerChain(
     return chain;
   }
 
+  const groqKey = settings?.groq_api_key?.trim() || env.groqApiKey;
+
   // If user explicitly chose Groq
   if (providerPref === "groq") {
-    const groqKey = env.groqApiKey;
     if (groqKey) {
-      for (const model of ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]) {
+      for (const model of ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192"]) {
         chain.push({
           provider: "groq",
           run: () =>
@@ -332,7 +333,9 @@ async function providerChain(
         });
       }
     } else {
-      failures.push("Groq: Nenhuma chave GROQ_API_KEY configurada nas variáveis de ambiente.");
+      failures.push(
+        "Groq: Nenhuma chave API configurada. Salve sua chave no menu Settings > Groq AI ou defina GROQ_API_KEY."
+      );
     }
     return chain;
   }
@@ -358,12 +361,12 @@ async function providerChain(
     }
   }
 
-  if (isGroqAllowed && env.groqApiKey) {
-    for (const model of ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]) {
+  if (isGroqAllowed && groqKey) {
+    for (const model of ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192"]) {
       chain.push({
         provider: "groq",
         run: () =>
-          chatCompletion("https://api.groq.com/openai/v1/chat/completions", model, topic, systemPrompt, env.groqApiKey),
+          chatCompletion("https://api.groq.com/openai/v1/chat/completions", model, topic, systemPrompt, groqKey),
       });
     }
   }

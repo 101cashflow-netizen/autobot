@@ -134,6 +134,7 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
     default_page_token,
     facebook_app_secret,
     gemini_api_key,
+    groq_api_key,
     pexels_api_key,
     pixabay_api_key,
     cloudflare_api_token,
@@ -142,6 +143,8 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
   } = settings;
   const envGemini = Boolean(env.geminiApiKey);
   const dbGemini = Boolean(gemini_api_key && gemini_api_key.trim());
+  const envGroq = Boolean(env.groqApiKey);
+  const dbGroq = Boolean(groq_api_key && groq_api_key.trim());
   const envPexels = Boolean(env.pexelsApiKey);
   const dbPexels = Boolean(pexels_api_key && pexels_api_key.trim());
   const envPixabay = Boolean(env.pixabayApiKey);
@@ -158,6 +161,8 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
     avatar_prompt: settings.avatar_prompt || DEFAULT_AVATAR_PROMPT,
     gemini_api_key_set: dbGemini || envGemini,
     gemini_configured_source: dbGemini ? "database" : envGemini ? "env" : "none",
+    groq_api_key_set: dbGroq || envGroq,
+    groq_configured_source: dbGroq ? "database" : envGroq ? "env" : "none",
     pexels_api_key_set: dbPexels || envPexels,
     pixabay_api_key_set: dbPixabay || envPixabay,
     cloudflare_account_id: settings.cloudflare_account_id || env.cloudflareAccountId || "",
@@ -510,6 +515,7 @@ export async function POST(req: Request, ctx: Ctx) {
 
 const SettingsBody = z.object({
   gemini_api_key: z.string().trim().optional(),
+  groq_api_key: z.string().trim().optional(),
   avatar_enabled: z.boolean().optional(),
   avatar_name: z.string().trim().max(50).optional(),
   avatar_prompt: z.string().trim().max(3000).optional(),
@@ -574,6 +580,15 @@ export async function PATCH(req: Request, ctx: Ctx) {
             {
               error:
                 "A coluna gemini_api_key ainda não existe no seu banco Supabase. Execute o comando SQL no Supabase: ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS gemini_api_key TEXT; ou configure GEMINI_API_KEY nas variáveis de ambiente da Cloudflare.",
+            },
+            409
+          );
+        }
+        if (err instanceof Error && /groq_api_key/.test(err.message)) {
+          return json(
+            {
+              error:
+                "A coluna groq_api_key ainda não existe no seu banco Supabase. Execute o comando SQL no Supabase: ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS groq_api_key TEXT; ou configure GROQ_API_KEY nas variáveis de ambiente da Cloudflare.",
             },
             409
           );

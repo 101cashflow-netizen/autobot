@@ -39,6 +39,8 @@ export interface AppSettings {
   default_page_token: string | null;
   /** Gemini API key stored in database (optional fallback to env var). */
   gemini_api_key?: string | null;
+  /** Groq API key stored in database (optional fallback to env var). */
+  groq_api_key?: string | null;
   /** Avatar character consistency settings (e.g. Nasha). */
   avatar_enabled?: boolean;
   avatar_name?: string | null;
