@@ -19,6 +19,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/cn";
+import { facebookPostUrl } from "@/lib/types";
 import type { GeneratedContent, ImageSource, ImageSourcePref, MediaType, PageCache, StockProvider, TextAiProviderPref } from "@/lib/types";
 
 type Step = "idle" | "generating" | "ready";
