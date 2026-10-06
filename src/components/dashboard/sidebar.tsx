@@ -15,13 +15,13 @@ import { Logo } from "@/components/logo";
 import { cn } from "@/lib/cn";
 
 const NAV = [
-  { href: "/dashboard", label: "Overview", icon: House },
-  { href: "/dashboard/generate", label: "Generate", icon: MagicWand },
-  { href: "/dashboard/topics", label: "Topics", icon: Lightbulb },
-  { href: "/dashboard/queue", label: "Queue", icon: ClockCountdown },
-  { href: "/dashboard/history", label: "History", icon: ListChecks },
-  { href: "/dashboard/pages", label: "Pages", icon: FlagBanner },
-  { href: "/dashboard/settings", label: "Settings", icon: GearSix },
+  { href: "/dashboard", label: "Visão Geral", icon: House },
+  { href: "/dashboard/generate", label: "Criar Post", icon: MagicWand },
+  { href: "/dashboard/topics", label: "Banco de Temas", icon: Lightbulb },
+  { href: "/dashboard/queue", label: "Fila & Agendados", icon: ClockCountdown },
+  { href: "/dashboard/history", label: "Histórico", icon: ListChecks },
+  { href: "/dashboard/pages", label: "Páginas", icon: FlagBanner },
+  { href: "/dashboard/settings", label: "Configurações", icon: GearSix },
 ];
 
 export function Sidebar() {

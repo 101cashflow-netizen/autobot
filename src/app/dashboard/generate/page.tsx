@@ -640,16 +640,23 @@ export default function GeneratePage() {
       {success && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-success/30 bg-success/10 p-3.5 text-sm text-success">
           <CheckCircle size={18} className="shrink-0" />
-          {success}
-          {publishedUrl && (
+          <span>{success}</span>
+          {publishedUrl ? (
             <a
               href={publishedUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 font-semibold underline underline-offset-2"
             >
-              View post <ArrowSquareOut size={13} />
+              Ver post no Facebook <ArrowSquareOut size={13} />
             </a>
+          ) : (
+            <Link
+              href="/dashboard/queue"
+              className="inline-flex items-center gap-1 font-semibold underline underline-offset-2 ml-1"
+            >
+              👉 Ver na Fila &amp; Agendados ↗
+            </Link>
           )}
         </div>
       )}

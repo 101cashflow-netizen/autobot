@@ -163,7 +163,14 @@ async function chatCompletion(
 
   const host = new URL(url).host;
   const body = await res.text();
-  if (!res.ok) throw new Error(`${host} responded ${res.status}`);
+  if (!res.ok) {
+    let errMsg = body;
+    try {
+      const parsed = JSON.parse(body);
+      errMsg = parsed?.error?.message || parsed?.message || body;
+    } catch {}
+    throw new Error(`${host} (${res.status}): ${errMsg}`);
+  }
 
   const data = JSON.parse(body);
   if (data?.error) {
@@ -174,6 +181,44 @@ async function chatCompletion(
   const content: unknown = data?.choices?.[0]?.message?.content;
   if (typeof content !== "string" || !content.trim()) throw new Error("Empty completion");
   return content;
+}
+
+async function getGroqModels(apiKey: string): Promise<string[]> {
+  const fallbackModels = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "llama-3.1-70b-versatile",
+    "llama3-70b-8192",
+    "llama3-8b-8192",
+    "mixtral-8x7b-32768",
+    "gemma2-9b-it",
+  ];
+
+  try {
+    const listRes = await fetch("https://api.groq.com/openai/v1/models", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (listRes.ok) {
+      const listData = await listRes.json();
+      const ids: string[] = (listData?.data || []).map((m: { id: string }) => m.id);
+      const matched = fallbackModels.filter((m) => ids.includes(m));
+      const others = ids.filter(
+        (id) =>
+          !matched.includes(id) &&
+          (id.startsWith("llama") || id.startsWith("mixtral") || id.startsWith("gemma")) &&
+          !id.includes("whisper") &&
+          !id.includes("guard")
+      );
+      if (matched.length > 0 || others.length > 0) {
+        return [...matched, ...others];
+      }
+    }
+  } catch {
+    // network or timeout fallback
+  }
+
+  return fallbackModels;
 }
 
 async function geminiCompletion(topic: string, apiKey: string, systemPrompt: string): Promise<string> {
@@ -325,7 +370,8 @@ async function providerChain(
   // If user explicitly chose Groq
   if (providerPref === "groq") {
     if (groqKey) {
-      for (const model of ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192"]) {
+      const groqModels = await getGroqModels(groqKey);
+      for (const model of groqModels.slice(0, 3)) {
         chain.push({
           provider: "groq",
           run: () =>
@@ -334,7 +380,7 @@ async function providerChain(
       }
     } else {
       failures.push(
-        "Groq: Nenhuma chave API configurada. Salve sua chave no menu Settings > Groq AI ou defina GROQ_API_KEY."
+        "Groq: Nenhuma chave API configurada. Salve sua chave no menu Configurações > Groq AI ou defina GROQ_API_KEY."
       );
     }
     return chain;
@@ -362,7 +408,8 @@ async function providerChain(
   }
 
   if (isGroqAllowed && groqKey) {
-    for (const model of ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192"]) {
+    const groqModels = await getGroqModels(groqKey);
+    for (const model of groqModels.slice(0, 3)) {
       chain.push({
         provider: "groq",
         run: () =>

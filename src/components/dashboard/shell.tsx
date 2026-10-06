@@ -21,23 +21,23 @@ import { Logo } from "@/components/logo";
 import { cn } from "@/lib/cn";
 
 const NAV = [
-  { href: "/dashboard", label: "Overview", icon: House },
-  { href: "/dashboard/generate", label: "Generate", icon: MagicWand },
-  { href: "/dashboard/topics", label: "Topics", icon: Lightbulb },
-  { href: "/dashboard/queue", label: "Queue", icon: ClockCountdown },
-  { href: "/dashboard/history", label: "History", icon: ListChecks },
-  { href: "/dashboard/pages", label: "Pages", icon: FlagBanner },
-  { href: "/dashboard/settings", label: "Settings", icon: GearSix },
+  { href: "/dashboard", label: "Visão Geral", icon: House },
+  { href: "/dashboard/generate", label: "Criar Post", icon: MagicWand },
+  { href: "/dashboard/topics", label: "Banco de Temas", icon: Lightbulb },
+  { href: "/dashboard/queue", label: "Fila & Agendados", icon: ClockCountdown },
+  { href: "/dashboard/history", label: "Histórico", icon: ListChecks },
+  { href: "/dashboard/pages", label: "Páginas", icon: FlagBanner },
+  { href: "/dashboard/settings", label: "Configurações", icon: GearSix },
 ];
 
 const TITLES: Record<string, string> = {
-  "/dashboard": "Overview",
-  "/dashboard/generate": "Generate a post",
-  "/dashboard/topics": "Topics",
-  "/dashboard/queue": "Queue",
-  "/dashboard/history": "History",
-  "/dashboard/pages": "Pages",
-  "/dashboard/settings": "Settings",
+  "/dashboard": "Visão Geral",
+  "/dashboard/generate": "Criar Post",
+  "/dashboard/topics": "Banco de Temas",
+  "/dashboard/queue": "Fila & Agendados",
+  "/dashboard/history": "Histórico de Publicações",
+  "/dashboard/pages": "Páginas do Facebook",
+  "/dashboard/settings": "Configurações",
 };
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {

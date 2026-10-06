@@ -105,7 +105,8 @@ async function hasSession(req: Request): Promise<boolean> {
  * an unset optional variable must not silently expose a publishing endpoint.
  */
 async function cronAuthorized(req: Request, url: URL): Promise<boolean> {
-  if (!env.cronSecret) return hasSession(req);
+  if (await hasSession(req)) return true;
+  if (!env.cronSecret) return false;
   const auth = req.headers.get("authorization");
   return auth === `Bearer ${env.cronSecret}` || url.searchParams.get("secret") === env.cronSecret;
 }
@@ -507,6 +508,10 @@ export async function POST(req: Request, ctx: Ctx) {
       return json({ ok: true });
     }
 
+    if (route === "cron/process-queue") {
+      return runCron(req, url);
+    }
+
     return notFound();
   });
 }
@@ -824,7 +829,8 @@ async function oauthCallback(req: Request, url: URL) {
  * (cron-job.org, UptimeRobot) at this same path with the CRON_SECRET.
  */
 async function runCron(req: Request, url: URL) {
-  if (env.cronSecret) {
+  const sessionOk = await hasSession(req);
+  if (!sessionOk && env.cronSecret) {
     const auth = req.headers.get("authorization");
     const provided = url.searchParams.get("secret");
     if (auth !== `Bearer ${env.cronSecret}` && provided !== env.cronSecret) {

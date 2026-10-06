@@ -7,6 +7,7 @@ import {
   Sparkle,
   ArrowRight,
   WarningCircle,
+  Article,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -137,42 +138,42 @@ export default async function DashboardOverviewPage() {
       {!connected && (
         <Card className="flex flex-col items-start justify-between gap-3 border-primary/30 bg-primary/5 sm:flex-row sm:items-center">
           <div>
-            <p className="font-semibold text-foreground">Connect Facebook to start posting</p>
+            <p className="font-semibold text-foreground">Conecte sua Página do Facebook para publicar</p>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              You can still generate and preview posts, but publishing needs a connected Page.
+              Você pode gerar textos e imagens, mas para postar é necessário conectar uma Página.
             </p>
           </div>
           <Link href="/dashboard/settings">
             <Button size="sm">
-              Connect now <ArrowRight size={14} />
+              Conectar agora <ArrowRight size={14} />
             </Button>
           </Link>
         </Card>
       )}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Total posted" value={posted.length} icon={MegaphoneSimple} tone="primary" />
-        <StatCard label="Posted this week" value={postedThisWeek.length} icon={CalendarCheck} tone="success" />
-        <StatCard label="In queue" value={scheduled.length} icon={ClockCountdown} tone="warning" />
-        <StatCard label="Failed" value={failed.length} icon={ChartLineUp} />
+        <StatCard label="Total Publicados" value={posted.length} icon={MegaphoneSimple} tone="primary" />
+        <StatCard label="Esta Semana" value={postedThisWeek.length} icon={CalendarCheck} tone="success" />
+        <StatCard label="Fila / Agendados" value={scheduled.length} icon={ClockCountdown} tone="warning" />
+        <StatCard label="Falhas" value={failed.length} icon={ChartLineUp} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <Card>
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-heading text-base font-bold text-foreground">Posts published — last 14 days</h2>
+            <h2 className="font-heading text-base font-bold text-foreground">Posts publicados — últimos 14 dias</h2>
           </div>
           <PostsChart data={chartData} />
         </Card>
 
         <Card className="flex flex-col">
-          <h2 className="font-heading text-base font-bold text-foreground">Quick generate</h2>
+          <h2 className="font-heading text-base font-bold text-foreground">Criação Rápida</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Pick a topic and let the bot write the copy and source the image.
+            Escolha um tema e deixe a IA redigir a copy e criar a imagem/vídeo.
           </p>
           <Link href="/dashboard/generate" className="mt-4">
             <Button className="w-full">
-              <Sparkle size={16} weight="fill" /> Generate a post
+              <Sparkle size={16} weight="fill" /> Criar novo post
             </Button>
           </Link>
 
@@ -180,19 +181,19 @@ export default async function DashboardOverviewPage() {
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Facebook</span>
               <span className={connected ? "font-medium text-success" : "font-medium text-muted-foreground"}>
-                {connected ? (settings.facebook_user_name ?? "Connected") : "Not connected"}
+                {connected ? (settings.facebook_user_name ?? "Conectado") : "Não conectado"}
               </span>
             </div>
             <div className="mt-2 flex items-center justify-between">
-              <span className="text-muted-foreground">Page</span>
+              <span className="text-muted-foreground">Página</span>
               <span className="truncate font-medium text-foreground">
                 {settings.default_page_name ?? "—"}
               </span>
             </div>
             <div className="mt-2 flex items-center justify-between">
-              <span className="text-muted-foreground">Autopilot</span>
+              <span className="text-muted-foreground">Piloto Automático</span>
               <span className={settings.auto_post_enabled ? "font-medium text-success" : "font-medium text-muted-foreground"}>
-                {settings.auto_post_enabled ? `On · ${settings.posts_per_day}/day` : "Off"}
+                {settings.auto_post_enabled ? `Ativo · ${settings.posts_per_day}/dia` : "Desligado"}
               </span>
             </div>
           </div>
@@ -201,15 +202,15 @@ export default async function DashboardOverviewPage() {
 
       <Card>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-heading text-base font-bold text-foreground">Recent activity</h2>
-          <Link href="/dashboard/history" className="text-sm font-medium text-primary hover:underline">
-            View all
+          <h2 className="font-heading text-base font-bold text-foreground">Atividade Recente</h2>
+          <Link href="/dashboard/history" className="text-sm font-semibold text-primary hover:underline">
+            Ver histórico completo
           </Link>
         </div>
 
         {recent.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            No posts yet — generate your first one to see it here.
+            Nenhum post ainda — crie seu primeiro post para vê-lo aqui.
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -227,6 +228,10 @@ export default async function DashboardOverviewPage() {
                             playsInline
                           />
                         </div>
+                      ) : post.media_type === "text" || (!post.image_url && !post.media_url) ? (
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                          <Article size={18} weight="bold" />
+                        </div>
                       ) : (
                         /* eslint-disable-next-line @next/next/no-img-element */
                         <img src={post.image_url} alt="" className="h-10 w-10 rounded-lg object-cover" />
@@ -242,7 +247,7 @@ export default async function DashboardOverviewPage() {
                       <StatusBadge status={post.status} />
                     </td>
                     <td className="py-2.5 text-right text-xs text-muted-foreground">
-                      {new Date(post.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      {new Date(post.created_at).toLocaleDateString("pt-BR", { month: "short", day: "numeric" })}
                     </td>
                   </tr>
                 ))}
