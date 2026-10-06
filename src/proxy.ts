@@ -25,6 +25,8 @@ export async function proxy(req: NextRequest) {
   return NextResponse.next();
 }
 
+export const runtime = "edge";
+
 export const config = {
   // Everything except static assets, images, and the API's own auth routes
   // (login/logout must stay reachable to establish/clear the session, and

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+
+export const runtime = "edge";
 import { env } from "@/lib/env";
 import {
   createSessionToken,

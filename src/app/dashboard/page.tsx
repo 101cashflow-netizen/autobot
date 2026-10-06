@@ -18,6 +18,7 @@ import { getSettings } from "@/lib/db/settings";
 import { isFacebookConnected } from "@/lib/types";
 import type { Post } from "@/lib/types";
 
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 function buildChartData(posted: { posted_at: string | null }[]) {
