@@ -52,6 +52,10 @@ export interface AppSettings {
   gemini_enabled?: boolean;
   groq_enabled?: boolean;
   pollinations_enabled?: boolean;
+  copy_language?: CopyLanguage;
+  copy_length?: CopyLength;
+  copy_tone?: CopyTone;
+  copy_custom_rules?: string | null;
   image_source: ImageSourcePref;
   utm_suffix: string;
   auto_post_enabled: boolean;
@@ -99,6 +103,23 @@ export interface PageCache {
  *  provider was unreachable and the deterministic fallback was used. */
 export type ContentProvider = "groq" | "gemini" | "pollinations" | "template";
 export type TextAiProviderPref = "auto" | "gemini" | "groq" | "pollinations";
+
+export type CopyLanguage = "auto" | "pt" | "en" | "es";
+export type CopyLength = "short" | "medium" | "long";
+export type CopyTone =
+  | "conversational"
+  | "persuasive"
+  | "informative"
+  | "inspirational"
+  | "humorous"
+  | "professional";
+
+export interface CopyGuidelines {
+  language?: CopyLanguage;
+  length?: CopyLength;
+  tone?: CopyTone;
+  customRules?: string;
+}
 
 export interface GeneratedContent {
   title: string;

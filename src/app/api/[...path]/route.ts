@@ -159,6 +159,10 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
     gemini_enabled: settings.gemini_enabled !== false,
     groq_enabled: settings.groq_enabled !== false,
     pollinations_enabled: settings.pollinations_enabled !== false,
+    copy_language: settings.copy_language || "auto",
+    copy_length: settings.copy_length || "medium",
+    copy_tone: settings.copy_tone || "conversational",
+    copy_custom_rules: settings.copy_custom_rules || "",
     // The App ID is public (it travels in the OAuth URL); the secret never
     // leaves the server, so the UI only learns whether one is stored.
     facebook_app_secret_set: Boolean(facebook_app_secret),
@@ -256,6 +260,12 @@ const LoginBody = z.object({ password: z.string() });
 const ContentBody = z.object({
   topic: z.string().trim().min(2).max(200),
   provider: z.enum(["auto", "gemini", "groq", "pollinations"]).optional(),
+  language: z.enum(["auto", "pt", "en", "es"]).optional(),
+  length: z.enum(["short", "medium", "long"]).optional(),
+  tone: z
+    .enum(["conversational", "persuasive", "informative", "inspirational", "humorous", "professional"])
+    .optional(),
+  customRules: z.string().max(1000).optional(),
 });
 
 const ImageBody = z.object({
@@ -329,7 +339,14 @@ export async function POST(req: Request, ctx: Ctx) {
     if (route === "generate/content") {
       const parsed = ContentBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return json({ error: "A topic (2-200 characters) is required." }, 400);
-      return json(await generateContent(parsed.data.topic, parsed.data.provider));
+      return json(
+        await generateContent(parsed.data.topic, parsed.data.provider, {
+          language: parsed.data.language,
+          length: parsed.data.length,
+          tone: parsed.data.tone,
+          customRules: parsed.data.customRules,
+        })
+      );
     }
 
     if (route === "generate/image") {
@@ -494,6 +511,12 @@ const SettingsBody = z.object({
   gemini_enabled: z.boolean().optional(),
   groq_enabled: z.boolean().optional(),
   pollinations_enabled: z.boolean().optional(),
+  copy_language: z.enum(["auto", "pt", "en", "es"]).optional(),
+  copy_length: z.enum(["short", "medium", "long"]).optional(),
+  copy_tone: z
+    .enum(["conversational", "persuasive", "informative", "inspirational", "humorous", "professional"])
+    .optional(),
+  copy_custom_rules: z.string().max(1000).optional(),
   image_source: z.enum(["ai", "stock", "mixed"]).optional(),
   utm_suffix: z.string().max(200).optional(),
   auto_post_enabled: z.boolean().optional(),
@@ -557,6 +580,15 @@ export async function PATCH(req: Request, ctx: Ctx) {
             {
               error:
                 "As colunas do Pexels/Pixabay ainda não existem no seu banco Supabase. Execute o comando SQL no Supabase: ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS pexels_api_key TEXT, ADD COLUMN IF NOT EXISTS pixabay_api_key TEXT, ADD COLUMN IF NOT EXISTS stock_provider TEXT DEFAULT 'any';",
+            },
+            409
+          );
+        }
+        if (err instanceof Error && /copy_/.test(err.message)) {
+          return json(
+            {
+              error:
+                "As colunas de diretrizes de Copy ainda não existem no seu banco Supabase. Execute o comando SQL no Supabase: ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS copy_language TEXT DEFAULT 'auto', ADD COLUMN IF NOT EXISTS copy_length TEXT DEFAULT 'medium', ADD COLUMN IF NOT EXISTS copy_tone TEXT DEFAULT 'conversational', ADD COLUMN IF NOT EXISTS copy_custom_rules TEXT DEFAULT '';",
             },
             409
           );

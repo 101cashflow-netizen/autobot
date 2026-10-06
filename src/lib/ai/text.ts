@@ -1,7 +1,15 @@
 import { env } from "@/lib/env";
 import { getEffectiveGeminiApiKey } from "@/lib/ai/gemini-key";
 import { getSettings } from "@/lib/db/settings";
-import type { ContentProvider, GeneratedContent, TextAiProviderPref } from "@/lib/types";
+import type {
+  ContentProvider,
+  CopyGuidelines,
+  CopyLanguage,
+  CopyLength,
+  CopyTone,
+  GeneratedContent,
+  TextAiProviderPref,
+} from "@/lib/types";
 
 /**
  * Facebook copy generation across LLM providers.
@@ -10,19 +18,73 @@ import type { ContentProvider, GeneratedContent, TextAiProviderPref } from "@/li
  * If all providers fail, a template copy is returned.
  */
 
-const SYSTEM_PROMPT = `You are an expert Facebook Page copywriter. Given a topic, write a single
-high-performing Facebook photo post in strict JSON with this exact shape and nothing else:
+export function buildSystemPrompt(guidelines: CopyGuidelines): string {
+  const lang = guidelines.language || "auto";
+  const length = guidelines.length || "medium";
+  const tone = guidelines.tone || "conversational";
+
+  const langRule = (() => {
+    switch (lang) {
+      case "en":
+        return "- language: STRICT RULE — The entire output (title, description, and hashtags) MUST be written in ENGLISH, regardless of the language of the topic.";
+      case "pt":
+        return "- language: REGRA ESTRITA — Todo o conteúdo (título, descrição e hashtags) DEVE ser escrito obrigatoriamente em PORTUGUÊS (Brasil), mesmo se o tema estiver em outro idioma.";
+      case "es":
+        return "- language: REGLA ESTRICTA — Todo el contenido (título, descripción y hashtags) DEBE escribirse obligatoriamente en ESPAÑOL.";
+      case "auto":
+      default:
+        return "- language: Write the entire post (title, description, and hashtags) in the exact same language as the provided topic (e.g., Portuguese if the topic is in Portuguese, English if in English).";
+    }
+  })();
+
+  const lengthRule = (() => {
+    switch (length) {
+      case "short":
+        return "- description length: Short and punchy. Exactly 1-2 impactful sentences, <= 180 characters total. Designed for rapid mobile consumption.";
+      case "long":
+        return "- description length: Long-form storytelling. 4 to 7 rich sentences, <= 650 characters. Provide context, value, narrative, and a memorable takeaway.";
+      case "medium":
+      default:
+        return "- description length: Medium format. 2-4 short sentences, <= 400 characters, written to be read on a phone.";
+    }
+  })();
+
+  const toneRule = (() => {
+    switch (tone) {
+      case "persuasive":
+        return "- tone & style: Persuasive, high-converting, benefit-driven copy. Focus on value, problem-solving, and a clear call-to-action.";
+      case "informative":
+        return "- tone & style: Educational and informative. Practical tips, structured actionable insights, and authority without technical jargon.";
+      case "inspirational":
+        return "- tone & style: Inspiring and motivational. Emotionally resonant, thoughtful, uplifting, and encouraging personal growth.";
+      case "humorous":
+        return "- tone & style: Witty, lighthearted, humorous, and entertaining. Playful and engaging while remaining brand-safe.";
+      case "professional":
+        return "- tone & style: Professional, executive, authoritative, and corporate. Credible, formal, and polished.";
+      case "conversational":
+      default:
+        return "- tone & style: Conversational, friendly, approachable, relatable, and authentic. Speak as a trusted friend to the community.";
+    }
+  })();
+
+  const customRule = guidelines.customRules?.trim()
+    ? `\n- Additional user instructions (strictly follow these): ${guidelines.customRules.trim()}`
+    : "";
+
+  return `You are an expert Facebook Page copywriter. Given a topic, write a single high-performing Facebook post in strict JSON with this exact shape and nothing else:
 {"title": string, "description": string, "hashtags": string[]}
 
-The three parts are joined into one caption, in that order, so they must read as
-one post rather than three fragments.
+The three parts are joined into one caption, in that order, so they must read as one cohesive post.
 
 Rules:
-- language: Write the entire post (title, description, and hashtags) in the same language as the provided topic (e.g., Portuguese if the topic is in Portuguese, English if in English).
+${langRule}
 - title: the opening hook, <= 80 characters. Conversational, scroll-stopping, specific. At most one emoji. No hashtags.
-- description: 2-4 short sentences, <= 400 characters, written to be read on a phone. Plain language, no marketing cliches. End with a question or a soft call to action that invites comments, since engagement drives Facebook reach.
-- hashtags: 3 to 5 short, highly relevant hashtags, lowercase, no "#" symbol, no spaces. Facebook rewards a few precise tags, not a wall of them.
+${lengthRule}
+${toneRule}
+- engagement: End the description with a question or a soft call to action that invites comments, since engagement drives Facebook reach.
+- hashtags: 3 to 5 short, highly relevant hashtags, lowercase, no "#" symbol, no spaces. Facebook rewards a few precise tags, not a wall of them.${customRule}
 - Output ONLY the JSON object. No markdown fences, no commentary.`;
+}
 
 const TIMEOUT_MS = 20_000;
 
@@ -57,6 +119,7 @@ async function chatCompletion(
   url: string,
   model: string,
   topic: string,
+  systemPrompt: string,
   apiKey?: string
 ): Promise<string> {
   const res = await fetch(url, {
@@ -69,7 +132,7 @@ async function chatCompletion(
       model,
       temperature: 0.9,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: `Topic: ${topic}` },
       ],
     }),
@@ -91,7 +154,7 @@ async function chatCompletion(
   return content;
 }
 
-async function geminiCompletion(topic: string, apiKey: string): Promise<string> {
+async function geminiCompletion(topic: string, apiKey: string, systemPrompt: string): Promise<string> {
   const preferredModels = [
     "gemini-3.5-flash-lite",
     "gemini-3.8-flash",
@@ -146,7 +209,7 @@ async function geminiCompletion(topic: string, apiKey: string): Promise<string> 
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            systemInstruction: { parts: [{ text: systemPrompt }] },
             contents: [{ role: "user", parts: [{ text: `Topic: ${topic}` }] }],
             generationConfig: { temperature: 0.9, responseMimeType: "application/json" },
           }),
@@ -178,9 +241,23 @@ async function geminiCompletion(topic: string, apiKey: string): Promise<string> 
   throw lastError ?? new Error("Todas as tentativas com Gemini falharam");
 }
 
-function template(topic: string): GeneratedContent {
+function template(topic: string, language: CopyLanguage = "auto"): GeneratedContent {
   const clean = topic.trim();
   const words = clean.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6);
+  if (language === "en") {
+    return {
+      title: `${clean} — worth checking out today`,
+      description: `Here are a few practical insights and thoughts on ${clean.toLowerCase()}. What is your take on this? Let us know in the comments below!`,
+      hashtags: [...new Set(words)].concat(["tips", "insights", "trending"]).slice(0, 5),
+    };
+  }
+  if (language === "es") {
+    return {
+      title: `${clean} — vale la pena revisar hoy`,
+      description: `Compartimos algunas ideas sobre ${clean.toLowerCase()}. Consejos prácticos para aplicar esta semana. ¿Cuál probarías primero?`,
+      hashtags: [...new Set(words)].concat(["ideas", "consejos"]).slice(0, 5),
+    };
+  }
   return {
     title: `${clean} — vale a pena conferir hoje`,
     description: `Reunimos algumas ideias sobre ${clean.toLowerCase()}. Dicas práticas para experimentar esta semana. Por qual delas você começaria?`,
@@ -192,8 +269,9 @@ type Attempt = { provider: ContentProvider; run: () => Promise<string> };
 
 async function providerChain(
   topic: string,
-  preferredProvider?: TextAiProviderPref,
-  failures: string[] = []
+  preferredProvider: TextAiProviderPref | undefined,
+  failures: string[],
+  systemPrompt: string
 ): Promise<Attempt[]> {
   const chain: Attempt[] = [];
   const settings = await getSettings().catch(() => null);
@@ -210,7 +288,7 @@ async function providerChain(
     if (geminiKey) {
       chain.push({
         provider: "gemini",
-        run: () => geminiCompletion(topic, geminiKey),
+        run: () => geminiCompletion(topic, geminiKey, systemPrompt),
       });
     } else {
       failures.push(
@@ -228,7 +306,7 @@ async function providerChain(
         chain.push({
           provider: "groq",
           run: () =>
-            chatCompletion("https://api.groq.com/openai/v1/chat/completions", model, topic, groqKey),
+            chatCompletion("https://api.groq.com/openai/v1/chat/completions", model, topic, systemPrompt, groqKey),
         });
       }
     } else {
@@ -241,7 +319,7 @@ async function providerChain(
   if (providerPref === "pollinations") {
     chain.push({
       provider: "pollinations",
-      run: () => chatCompletion("https://text.pollinations.ai/openai", "openai-fast", topic),
+      run: () => chatCompletion("https://text.pollinations.ai/openai", "openai-fast", topic, systemPrompt),
     });
     return chain;
   }
@@ -251,7 +329,7 @@ async function providerChain(
     if (geminiKey) {
       chain.push({
         provider: "gemini",
-        run: () => geminiCompletion(topic, geminiKey),
+        run: () => geminiCompletion(topic, geminiKey, systemPrompt),
       });
     } else {
       failures.push("Google Gemini: Chave não informada em Settings.");
@@ -263,7 +341,7 @@ async function providerChain(
       chain.push({
         provider: "groq",
         run: () =>
-          chatCompletion("https://api.groq.com/openai/v1/chat/completions", model, topic, env.groqApiKey),
+          chatCompletion("https://api.groq.com/openai/v1/chat/completions", model, topic, systemPrompt, env.groqApiKey),
       });
     }
   }
@@ -271,7 +349,7 @@ async function providerChain(
   if (isPollinationsAllowed) {
     chain.push({
       provider: "pollinations",
-      run: () => chatCompletion("https://text.pollinations.ai/openai", "openai-fast", topic),
+      run: () => chatCompletion("https://text.pollinations.ai/openai", "openai-fast", topic, systemPrompt),
     });
   }
 
@@ -280,10 +358,21 @@ async function providerChain(
 
 export async function generateContent(
   topic: string,
-  preferredProvider?: TextAiProviderPref
+  preferredProvider?: TextAiProviderPref,
+  guidelines?: CopyGuidelines
 ): Promise<GeneratedContent> {
   const failures: string[] = [];
-  const chain = await providerChain(topic, preferredProvider, failures);
+  const settings = await getSettings().catch(() => null);
+
+  const effectiveGuidelines: CopyGuidelines = {
+    language: guidelines?.language || settings?.copy_language || "auto",
+    length: guidelines?.length || settings?.copy_length || "medium",
+    tone: guidelines?.tone || settings?.copy_tone || "conversational",
+    customRules: guidelines?.customRules ?? settings?.copy_custom_rules ?? "",
+  };
+
+  const systemPrompt = buildSystemPrompt(effectiveGuidelines);
+  const chain = await providerChain(topic, preferredProvider, failures, systemPrompt);
 
   for (const { provider, run } of chain) {
     try {
@@ -296,7 +385,7 @@ export async function generateContent(
 
   console.warn("[generateContent] every provider failed:", failures.join(" | "));
   return {
-    ...template(topic),
+    ...template(topic, effectiveGuidelines.language),
     provider: "template",
     providerError: failures[0],
     providerErrors: failures,

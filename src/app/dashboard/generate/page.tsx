@@ -21,7 +21,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/cn";
 import { facebookPostUrl } from "@/lib/types";
-import type { GeneratedContent, ImageSource, ImageSourcePref, MediaType, PageCache, StockProvider, TextAiProviderPref } from "@/lib/types";
+import type {
+  CopyLanguage,
+  CopyLength,
+  CopyTone,
+  GeneratedContent,
+  ImageSource,
+  ImageSourcePref,
+  MediaType,
+  PageCache,
+  StockProvider,
+  TextAiProviderPref,
+} from "@/lib/types";
 
 type Step = "idle" | "generating" | "ready";
 
@@ -32,6 +43,11 @@ export default function GeneratePage() {
   const [ownTopics, setOwnTopics] = useState<string[]>([]);
   const [imagePref, setImagePref] = useState<ImageSourcePref>("ai");
   const [copyAiPref, setCopyAiPref] = useState<TextAiProviderPref>("auto");
+  const [copyLang, setCopyLang] = useState<CopyLanguage>("auto");
+  const [copyLength, setCopyLength] = useState<CopyLength>("medium");
+  const [copyTone, setCopyTone] = useState<CopyTone>("conversational");
+  const [copyCustomRules, setCopyCustomRules] = useState<string>("");
+  const [showGuidelines, setShowGuidelines] = useState(false);
   const [avatarName, setAvatarName] = useState<string | null>("Nasha");
 
   const [step, setStep] = useState<Step>("idle");
@@ -86,6 +102,10 @@ export default function GeneratePage() {
       .then((d) => {
         setImagePref(d.image_source ?? "ai");
         if (d.text_provider_pref) setCopyAiPref(d.text_provider_pref);
+        if (d.copy_language) setCopyLang(d.copy_language);
+        if (d.copy_length) setCopyLength(d.copy_length);
+        if (d.copy_tone) setCopyTone(d.copy_tone);
+        if (d.copy_custom_rules) setCopyCustomRules(d.copy_custom_rules);
         if (d.avatar_enabled !== false) {
           setAvatarName(d.avatar_name || "Nasha");
         } else {
@@ -119,11 +139,20 @@ export default function GeneratePage() {
     setVideo(null);
 
     try {
+      const copyPayload = {
+        topic,
+        provider: copyAiPref,
+        language: copyLang,
+        length: copyLength,
+        tone: copyTone,
+        customRules: copyCustomRules,
+      };
+
       if (mediaType === "text") {
         const contentRes = await fetch("/api/generate/content", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ topic, provider: copyAiPref }),
+          body: JSON.stringify(copyPayload),
         });
 
         if (!contentRes.ok) throw new Error((await contentRes.json()).error ?? "Falha ao gerar o texto.");
@@ -138,7 +167,7 @@ export default function GeneratePage() {
           fetch("/api/generate/content", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ topic, provider: copyAiPref }),
+            body: JSON.stringify(copyPayload),
           }),
           fetch("/api/generate/video", {
             method: "POST",
@@ -168,7 +197,7 @@ export default function GeneratePage() {
           fetch("/api/generate/content", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ topic, provider: copyAiPref }),
+            body: JSON.stringify(copyPayload),
           }),
           fetch("/api/generate/image", {
             method: "POST",
@@ -201,7 +230,14 @@ export default function GeneratePage() {
       const res = await fetch("/api/generate/content", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, provider: copyAiPref }),
+        body: JSON.stringify({
+          topic,
+          provider: copyAiPref,
+          language: copyLang,
+          length: copyLength,
+          tone: copyTone,
+          customRules: copyCustomRules,
+        }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Erro ao regenerar texto.");
       const data: GeneratedContent = await res.json();
@@ -394,7 +430,7 @@ export default function GeneratePage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-muted-foreground">IA Redação (Copy):</span>
+            <span className="text-xs font-semibold text-muted-foreground">IA Redação:</span>
             <select
               value={copyAiPref}
               onChange={(e) => setCopyAiPref(e.target.value as TextAiProviderPref)}
@@ -407,7 +443,85 @@ export default function GeneratePage() {
               <option value="pollinations">Pollinations (Gratuito)</option>
             </select>
           </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground">Idioma:</span>
+            <select
+              value={copyLang}
+              onChange={(e) => setCopyLang(e.target.value as CopyLanguage)}
+              className="rounded-xl border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary"
+              aria-label="Idioma da Copy"
+            >
+              <option value="auto">Auto (Detectar do tema)</option>
+              <option value="pt">Português (BR)</option>
+              <option value="en">Inglês (English)</option>
+              <option value="es">Espanhol (Español)</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground">Tamanho:</span>
+            <select
+              value={copyLength}
+              onChange={(e) => setCopyLength(e.target.value as CopyLength)}
+              className="rounded-xl border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary"
+              aria-label="Tamanho da Copy"
+            >
+              <option value="short">Curto (1-2 frases)</option>
+              <option value="medium">Médio (2-4 frases)</option>
+              <option value="long">Longo (Storytelling)</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground">Tom:</span>
+            <select
+              value={copyTone}
+              onChange={(e) => setCopyTone(e.target.value as CopyTone)}
+              className="rounded-xl border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary"
+              aria-label="Tom de Voz"
+            >
+              <option value="conversational">Conversacional</option>
+              <option value="persuasive">Persuasivo / Vendas</option>
+              <option value="informative">Informativo / Educativo</option>
+              <option value="inspirational">Inspiracional</option>
+              <option value="humorous">Divertido</option>
+              <option value="professional">Profissional</option>
+            </select>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowGuidelines((v) => !v)}
+            className={cn(
+              "rounded-xl border border-border px-2.5 py-1.5 text-xs font-medium transition cursor-pointer",
+              showGuidelines || copyCustomRules.trim()
+                ? "bg-primary/10 text-primary border-primary/30"
+                : "bg-background text-muted-foreground hover:text-foreground"
+            )}
+            title="Configurar regras personalizadas de redação para este post"
+          >
+            {showGuidelines ? "Ocultar regras" : "+ Regras extras"}
+          </button>
         </div>
+
+        {showGuidelines && (
+          <div className="mt-2.5 rounded-xl border border-border/80 bg-surface-2/60 p-3">
+            <label className="text-xs font-semibold text-foreground">
+              Instruções personalizadas para o Gemini / IA neste post:
+            </label>
+            <input
+              type="text"
+              value={copyCustomRules}
+              onChange={(e) => setCopyCustomRules(e.target.value)}
+              placeholder="Ex: Termine sempre com pergunta instigante; use no máximo 2 emojis; enfatize benefícios..."
+              className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-xs outline-none focus:border-primary"
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Essas diretrizes são repassadas ao gerador de copy ao clicar em Gerar ou Regenerar Texto.
+            </p>
+          </div>
+        )}
 
         {mediaType === "image" && avatarName && (
           <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-purple-500/10 px-2.5 py-1 text-xs font-medium text-purple-600 dark:text-purple-400">

@@ -20,7 +20,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
-import type { ImageSourcePref, TextAiProviderPref } from "@/lib/types";
+import type { CopyLanguage, CopyLength, CopyTone, ImageSourcePref, TextAiProviderPref } from "@/lib/types";
 
 const TIMEZONES = [
   "Asia/Karachi",
@@ -52,6 +52,10 @@ interface SettingsState {
   gemini_enabled?: boolean;
   groq_enabled?: boolean;
   pollinations_enabled?: boolean;
+  copy_language?: CopyLanguage;
+  copy_length?: CopyLength;
+  copy_tone?: CopyTone;
+  copy_custom_rules?: string | null;
   avatar_enabled?: boolean;
   avatar_name?: string | null;
   avatar_prompt?: string | null;
@@ -100,6 +104,14 @@ function SettingsForm() {
   const [groqEnabled, setGroqEnabled] = useState(true);
   const [pollinationsEnabled, setPollinationsEnabled] = useState(true);
 
+  const [copyLanguage, setCopyLanguage] = useState<CopyLanguage>("auto");
+  const [copyLength, setCopyLength] = useState<CopyLength>("medium");
+  const [copyTone, setCopyTone] = useState<CopyTone>("conversational");
+  const [copyCustomRules, setCopyCustomRules] = useState("");
+  const [savingGuidelines, setSavingGuidelines] = useState(false);
+  const [guidelinesError, setGuidelinesError] = useState<string | null>(null);
+  const [guidelinesSaved, setGuidelinesSaved] = useState(false);
+
   const [avatarEnabled, setAvatarEnabled] = useState(true);
   const [avatarName, setAvatarName] = useState("Nasha");
   const [avatarPrompt, setAvatarPrompt] = useState("");
@@ -138,6 +150,10 @@ function SettingsForm() {
         setGeminiEnabled(data.gemini_enabled !== false);
         setGroqEnabled(data.groq_enabled !== false);
         setPollinationsEnabled(data.pollinations_enabled !== false);
+        setCopyLanguage(data.copy_language ?? "auto");
+        setCopyLength(data.copy_length ?? "medium");
+        setCopyTone(data.copy_tone ?? "conversational");
+        setCopyCustomRules(data.copy_custom_rules ?? "");
         setAvatarEnabled(data.avatar_enabled !== false);
         setAvatarName(data.avatar_name ?? "Nasha");
         setAvatarPrompt(data.avatar_prompt ?? "");
@@ -285,6 +301,33 @@ function SettingsForm() {
       setStockKeysError(err instanceof Error ? err.message : "Erro ao salvar chaves.");
     } finally {
       setSavingStockKeys(false);
+    }
+  }
+
+  async function saveGuidelines() {
+    setGuidelinesError(null);
+    setGuidelinesSaved(false);
+    setSavingGuidelines(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          copy_language: copyLanguage,
+          copy_length: copyLength,
+          copy_tone: copyTone,
+          copy_custom_rules: copyCustomRules.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro ao salvar diretrizes de redação.");
+      setSettings((s) => (s ? { ...s, ...data } : s));
+      setGuidelinesSaved(true);
+      setTimeout(() => setGuidelinesSaved(false), 3000);
+    } catch (err) {
+      setGuidelinesError(err instanceof Error ? err.message : "Erro ao salvar diretrizes.");
+    } finally {
+      setSavingGuidelines(false);
     }
   }
 
@@ -713,6 +756,100 @@ function SettingsForm() {
             <p className="mt-3 text-[11px] text-muted-foreground">
               * Se todos os provedores estiverem desabilitados ou indisponíveis, o bot utilizará um modelo fixo (Template) estruturado para não interromper a publicação.
             </p>
+
+            {/* Diretrizes de Copywriting (Idioma, Tamanho, Tom, Regras) */}
+            <div className="mt-6 border-t border-border pt-4">
+              <h3 className="text-sm font-bold text-foreground">Diretrizes de Redação Padrão</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Configure como as IAs (Gemini, Groq ou Pollinations) devem estruturar o texto, idioma e estilo das copys.
+              </p>
+
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {/* Idioma */}
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    Idioma da Redação
+                  </label>
+                  <select
+                    value={copyLanguage}
+                    onChange={(e) => setCopyLanguage(e.target.value as CopyLanguage)}
+                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="auto">Automático (Detectar do tema)</option>
+                    <option value="pt">Português (Brasil)</option>
+                    <option value="en">Inglês (English)</option>
+                    <option value="es">Espanhol (Español)</option>
+                  </select>
+                </div>
+
+                {/* Tamanho */}
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    Tamanho do Texto
+                  </label>
+                  <select
+                    value={copyLength}
+                    onChange={(e) => setCopyLength(e.target.value as CopyLength)}
+                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="short">Curto (1-2 frases impactantes)</option>
+                    <option value="medium">Médio (2-4 frases / Padrão)</option>
+                    <option value="long">Longo (Storytelling 4-7 frases)</option>
+                  </select>
+                </div>
+
+                {/* Tom de Voz */}
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    Tom de Voz / Estilo
+                  </label>
+                  <select
+                    value={copyTone}
+                    onChange={(e) => setCopyTone(e.target.value as CopyTone)}
+                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="conversational">Conversacional (Amigável &amp; Natural)</option>
+                    <option value="persuasive">Persuasivo / Vendas (Foco em conversão &amp; CTA)</option>
+                    <option value="informative">Informativo / Educativo (Dicas práticas)</option>
+                    <option value="inspirational">Inspiracional / Motivacional</option>
+                    <option value="humorous">Divertido / Bem-humorado</option>
+                    <option value="professional">Profissional / Corporativo</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Regras Personalizadas */}
+              <div className="mt-3">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Instruções ou Regras Personalizadas Adicionais (opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={copyCustomRules}
+                  onChange={(e) => setCopyCustomRules(e.target.value)}
+                  placeholder="Ex: Termine sempre com uma pergunta instigante; use no máximo 2 emojis; mencione benefícios práticos..."
+                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2 text-sm outline-none focus:border-primary"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Estas instruções serão injetadas diretamente no prompt do Gemini, Groq e Pollinations.
+                </p>
+              </div>
+
+              {guidelinesError && (
+                <p className="mt-2 text-xs text-destructive">{guidelinesError}</p>
+              )}
+
+              <div className="mt-3 flex items-center gap-2">
+                <Button size="sm" onClick={saveGuidelines} disabled={savingGuidelines}>
+                  {savingGuidelines ? "Salvando diretrizes…" : "Salvar Diretrizes de Redação"}
+                </Button>
+                {guidelinesSaved && (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
+                    <CheckCircle size={14} /> Diretrizes salvas com sucesso!
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </Card>

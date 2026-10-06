@@ -37,6 +37,10 @@ create table if not exists app_settings (
   gemini_enabled boolean not null default true,
   groq_enabled boolean not null default true,
   pollinations_enabled boolean not null default true,
+  copy_language text default 'auto',              -- 'auto' | 'pt' | 'en' | 'es'
+  copy_length text default 'medium',              -- 'short' | 'medium' | 'long'
+  copy_tone text default 'conversational',        -- 'conversational' | 'persuasive' | 'informative' | 'inspirational' | 'humorous' | 'professional'
+  copy_custom_rules text default '',
   image_source text not null default 'ai',        -- 'ai' | 'stock' | 'mixed'
   utm_suffix text default '',
   auto_post_enabled boolean not null default false,
@@ -132,6 +136,10 @@ alter table app_settings add column if not exists text_provider_pref text defaul
 alter table app_settings add column if not exists gemini_enabled boolean not null default true;
 alter table app_settings add column if not exists groq_enabled boolean not null default true;
 alter table app_settings add column if not exists pollinations_enabled boolean not null default true;
+alter table app_settings add column if not exists copy_language text default 'auto';
+alter table app_settings add column if not exists copy_length text default 'medium';
+alter table app_settings add column if not exists copy_tone text default 'conversational';
+alter table app_settings add column if not exists copy_custom_rules text default '';
 alter table posts add column if not exists media_type text not null default 'image';
 alter table posts add column if not exists media_url text;
 alter table posts alter column image_url drop not null;
