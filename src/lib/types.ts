@@ -56,6 +56,9 @@ export interface AppSettings {
   copy_length?: CopyLength;
   copy_tone?: CopyTone;
   copy_custom_rules?: string | null;
+  cloudflare_account_id?: string | null;
+  cloudflare_api_token?: string | null;
+  pollinations_api_key?: string | null;
   image_source: ImageSourcePref;
   utm_suffix: string;
   auto_post_enabled: boolean;

@@ -41,6 +41,9 @@ create table if not exists app_settings (
   copy_length text default 'medium',              -- 'short' | 'medium' | 'long' | 'random'
   copy_tone text default 'conversational',        -- 'conversational' | 'persuasive' | 'informative' | 'inspirational' | 'humorous' | 'professional' | 'random'
   copy_custom_rules text default '',
+  cloudflare_account_id text,
+  cloudflare_api_token text,
+  pollinations_api_key text,
   image_source text not null default 'ai',        -- 'ai' | 'stock' | 'mixed'
   utm_suffix text default '',
   auto_post_enabled boolean not null default false,
@@ -140,6 +143,9 @@ alter table app_settings add column if not exists copy_language text default 'au
 alter table app_settings add column if not exists copy_length text default 'medium';
 alter table app_settings add column if not exists copy_tone text default 'conversational';
 alter table app_settings add column if not exists copy_custom_rules text default '';
+alter table app_settings add column if not exists cloudflare_account_id text;
+alter table app_settings add column if not exists cloudflare_api_token text;
+alter table app_settings add column if not exists pollinations_api_key text;
 alter table posts add column if not exists media_type text not null default 'image';
 alter table posts add column if not exists media_url text;
 alter table posts alter column image_url drop not null;

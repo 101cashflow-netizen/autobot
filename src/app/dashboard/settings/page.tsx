@@ -16,6 +16,7 @@ import {
   User,
   VideoCamera,
   Robot,
+  Camera,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -62,6 +63,9 @@ interface SettingsState {
   pexels_api_key_set?: boolean;
   pixabay_api_key_set?: boolean;
   stock_provider?: "pexels" | "pixabay" | "any";
+  cloudflare_account_id?: string;
+  cloudflare_configured?: boolean;
+  pollinations_api_key_set?: boolean;
   image_source: ImageSourcePref;
   utm_suffix: string;
   auto_post_enabled: boolean;
@@ -125,6 +129,13 @@ function SettingsForm() {
   const [savingStockKeys, setSavingStockKeys] = useState(false);
   const [stockKeysError, setStockKeysError] = useState<string | null>(null);
   const [stockKeysSaved, setStockKeysSaved] = useState(false);
+
+  const [cfAccountIdInput, setCfAccountIdInput] = useState("");
+  const [cfApiTokenInput, setCfApiTokenInput] = useState("");
+  const [pollinationsKeyInput, setPollinationsKeyInput] = useState("");
+  const [savingImageAiKeys, setSavingImageAiKeys] = useState(false);
+  const [imageAiKeysError, setImageAiKeysError] = useState<string | null>(null);
+  const [imageAiKeysSaved, setImageAiKeysSaved] = useState(false);
   // Read from the browser rather than configured, so they always match the
   // hostname the user is actually on — the values Facebook compares against.
   const [redirectUri, setRedirectUri] = useState("");
@@ -158,6 +169,7 @@ function SettingsForm() {
         setAvatarName(data.avatar_name ?? "Nasha");
         setAvatarPrompt(data.avatar_prompt ?? "");
         setStockProvider(data.stock_provider ?? "any");
+        setCfAccountIdInput(data.cloudflare_account_id ?? "");
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load settings."));
   }, []);
@@ -301,6 +313,40 @@ function SettingsForm() {
       setStockKeysError(err instanceof Error ? err.message : "Erro ao salvar chaves.");
     } finally {
       setSavingStockKeys(false);
+    }
+  }
+
+  async function saveImageAiKeys() {
+    setImageAiKeysError(null);
+    setImageAiKeysSaved(false);
+    setSavingImageAiKeys(true);
+    try {
+      const payload: Record<string, string> = {
+        cloudflare_account_id: cfAccountIdInput.trim(),
+      };
+      if (cfApiTokenInput.trim()) {
+        payload.cloudflare_api_token = cfApiTokenInput.trim();
+      }
+      if (pollinationsKeyInput.trim()) {
+        payload.pollinations_api_key = pollinationsKeyInput.trim();
+      }
+
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro ao salvar chaves.");
+      setSettings((s) => (s ? { ...s, ...data } : s));
+      setCfApiTokenInput("");
+      setPollinationsKeyInput("");
+      setImageAiKeysSaved(true);
+      setTimeout(() => setImageAiKeysSaved(false), 3000);
+    } catch (err) {
+      setImageAiKeysError(err instanceof Error ? err.message : "Erro ao salvar chaves de imagem.");
+    } finally {
+      setSavingImageAiKeys(false);
     }
   }
 
@@ -1002,6 +1048,157 @@ function SettingsForm() {
             <div className="mt-4 flex items-center gap-2">
               <Button size="sm" onClick={saveAvatar} disabled={savingAvatar}>
                 {savingAvatar ? "Salvando…" : "Salvar Avatar"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Provedores de Imagem e Avatar IA (Cloudflare Workers AI FLUX & Pollinations) */}
+      <Card>
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            <Camera size={22} weight="fill" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-heading font-bold text-foreground">
+                Provedores de Imagem e Avatar IA (Fotos Hiper-realistas)
+              </h2>
+              <div className="flex flex-wrap gap-1.5">
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                    settings.cloudflare_configured
+                      ? "bg-success/10 text-success"
+                      : "bg-surface-2 text-muted-foreground"
+                  )}
+                >
+                  {settings.cloudflare_configured ? <CheckCircle size={13} /> : null}
+                  Cloudflare FLUX: {settings.cloudflare_configured ? "Ativo (Recomendado)" : "Não configurado"}
+                </span>
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                    settings.pollinations_api_key_set
+                      ? "bg-success/10 text-success"
+                      : "bg-surface-2 text-muted-foreground"
+                  )}
+                >
+                  {settings.pollinations_api_key_set ? <CheckCircle size={13} /> : null}
+                  Pollinations Key: {settings.pollinations_api_key_set ? "Ativo" : "Público (Anônimo)"}
+                </span>
+              </div>
+            </div>
+
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Para fotos ultra-realistas da <strong>{avatarName || "Nasha"}</strong> sem aspecto de desenho ou borrões:
+              o Google Gemini gratuito possui limite de 0 imagens/min. Configure o <strong>Cloudflare Workers AI</strong> (10.000 neurônios/dia grátis na sua conta Cloudflare) para geração com o modelo de ponta <strong>FLUX.1 Schnell</strong>.
+            </p>
+
+            {/* Cloudflare Workers AI */}
+            <div className="mt-4 rounded-xl border border-border bg-surface-2/40 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    ⚡ Cloudflare Workers AI — FLUX.1 Schnell
+                    <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
+                      100% Gratuito (10.000 neurônios/dia)
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Como o seu site já está no Cloudflare Pages, basta copiar o Account ID no painel e criar um API Token com permissão &quot;Workers AI: Read&quot;.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    Cloudflare Account ID
+                  </label>
+                  <input
+                    value={cfAccountIdInput}
+                    onChange={(e) => setCfAccountIdInput(e.target.value)}
+                    placeholder="Ex: 8f2a1b3c4d5e6f7a8b9c0d1e2f3a4b5c"
+                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-xs font-mono outline-none focus:border-primary"
+                  />
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Encontrado na URL do painel Cloudflare ou na barra lateral &quot;Account ID&quot;.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    Cloudflare API Token (Workers AI)
+                  </label>
+                  <input
+                    type="password"
+                    value={cfApiTokenInput}
+                    onChange={(e) => setCfApiTokenInput(e.target.value)}
+                    placeholder={
+                      settings.cloudflare_configured
+                        ? "•••• Token configurado — digite para substituir"
+                        : "Cole seu API Token do Cloudflare"
+                    }
+                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-xs font-mono outline-none focus:border-primary"
+                  />
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Criado em Cloudflare &gt; My Profile &gt; API Tokens &gt; Create Token (Template: &quot;Workers AI&quot;).
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Pollinations API Key */}
+            <div className="mt-3 rounded-xl border border-border bg-surface-2/40 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold text-foreground">
+                    Pollinations.ai API Key (Opcional)
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Caso possua chave da plataforma Pollinations (obtida em{" "}
+                    <a
+                      href="https://enter.pollinations.ai"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-primary hover:underline"
+                    >
+                      enter.pollinations.ai ↗
+                    </a>
+                    ), cole aqui para desbloquear modelos FLUX e Seedream sem marca d&apos;água.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-2.5">
+                <input
+                  type="password"
+                  value={pollinationsKeyInput}
+                  onChange={(e) => setPollinationsKeyInput(e.target.value)}
+                  placeholder={
+                    settings.pollinations_api_key_set
+                      ? "•••• Chave Pollinations salva — digite para substituir"
+                      : "Cole aqui sua chave (ex: sk_...)"
+                  }
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs font-mono outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+
+            {imageAiKeysError && (
+              <p className="mt-2 text-xs text-destructive">{imageAiKeysError}</p>
+            )}
+            {imageAiKeysSaved && (
+              <p className="mt-2 text-xs font-medium text-success">
+                Configurações de imagem salvas com sucesso! ✓
+              </p>
+            )}
+
+            <div className="mt-4 flex items-center gap-2">
+              <Button size="sm" onClick={saveImageAiKeys} disabled={savingImageAiKeys}>
+                {savingImageAiKeys ? "Salvando…" : "Salvar Provedores de Imagem"}
               </Button>
             </div>
           </div>

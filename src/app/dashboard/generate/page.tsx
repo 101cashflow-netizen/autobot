@@ -57,6 +57,7 @@ export default function GeneratePage() {
 
   const [content, setContent] = useState<GeneratedContent | null>(null);
   const [image, setImage] = useState<{ url: string; source: ImageSource } | null>(null);
+  const [imageHint, setImageHint] = useState<string | null>(null);
   const [video, setVideo] = useState<{
     url: string;
     previewUrl?: string;
@@ -137,6 +138,7 @@ export default function GeneratePage() {
     setContent(null);
     setImage(null);
     setVideo(null);
+    setImageHint(null);
 
     try {
       const copyPayload = {
@@ -210,10 +212,11 @@ export default function GeneratePage() {
         if (!imageRes.ok) throw new Error((await imageRes.json()).error ?? "Falha ao gerar a imagem.");
 
         const contentData: GeneratedContent = await contentRes.json();
-        const imageData: { url: string; source: ImageSource } = await imageRes.json();
+        const imageData: { url: string; source: ImageSource; errorHint?: string } = await imageRes.json();
 
         setContent(contentData);
         setImage(imageData);
+        setImageHint(imageData.errorHint ?? null);
         setStep("ready");
       }
     } catch (err) {
@@ -277,8 +280,9 @@ export default function GeneratePage() {
           body: JSON.stringify({ prompt: topic, source: imagePref }),
         });
         if (!res.ok) throw new Error((await res.json()).error ?? "Erro ao gerar outra imagem.");
-        const imageData: { url: string; source: ImageSource } = await res.json();
+        const imageData: { url: string; source: ImageSource; errorHint?: string } = await res.json();
         setImage(imageData);
+        setImageHint(imageData.errorHint ?? null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao trocar mídia.");
@@ -733,6 +737,13 @@ export default function GeneratePage() {
                         ? "Trocar vídeo"
                         : "Regenerar imagem"}
                   </button>
+                </div>
+              )}
+
+              {imageHint && (
+                <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-600 dark:text-amber-400">
+                  <p className="font-semibold flex items-center gap-1">⚠️ Aviso do Provedor de Imagem:</p>
+                  <p className="mt-0.5 leading-relaxed text-[11px]">{imageHint}</p>
                 </div>
               )}
             </div>

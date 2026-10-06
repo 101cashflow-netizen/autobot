@@ -69,6 +69,15 @@ export const env = {
   get pixabayApiKey() {
     return optional("PIXABAY_API_KEY");
   },
+  get cloudflareAccountId() {
+    return optional("CLOUDFLARE_ACCOUNT_ID");
+  },
+  get cloudflareAiToken() {
+    return optional("CLOUDFLARE_AI_TOKEN");
+  },
+  get pollinationsApiKey() {
+    return optional("POLLINATIONS_API_KEY");
+  },
 
   // Cron
   get cronSecret() {

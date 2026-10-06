@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 export const DEFAULT_AVATAR_NAME = "Nasha";
 
 export const DEFAULT_AVATAR_PROMPT =
-  "A high-quality, photorealistic cinematic photograph of a 21-year-old girl named Nasha. She is around 1.62m (5'4\") tall with an athletic, well-toned hourglass figure (classic American fit physique), showing a healthy and natural good shape. She has light brown skin (morena clara), a natural-flowing hairstyle with light-brown slightly curly hair, and subtle freckles across her cheeks. She features a discreet, tiny stud piercing in her left nostril. She is wearing light, breezy new-hippie clothing made of natural organic cotton fibers in an earthy olive green color. Photorealistic, hyper-detailed skin and body texture, soft natural daylight, shallow depth of field, 4k resolution, strict character consistency.";
+  "Authentic candid photograph of a 21-year-old Brazilian woman named Nasha. She is around 1.62m (5'4\") tall with an athletic, naturally toned fit physique. She has natural light brown skin (morena clara), natural curly light-brown hair, subtle freckles on cheeks, and a tiny discreet stud piercing in her left nostril. Wearing casual earthy olive green organic clothing. Shot on Canon EOS R5 with 85mm portrait lens, f/1.8, natural soft daylight, sharp focus on eyes, authentic detailed real human skin texture with pores and natural imperfections. Raw photographic style, real person. No cartoon, no anime, no illustration, no drawing, no 3D render, no CGI, no smooth plastic skin, no blur, no watermark.";
 
 /**
  * Retrieves the avatar configuration from app_settings with defaults.
@@ -49,5 +49,5 @@ export function formatAvatarPrompt(topicPrompt: string, avatarPrompt: string): s
     .trim()
     .replace(/[.,\s]+$/, "");
 
-  return `${cleaned}, in a scene representing: ${topicPrompt}. Professional photography, natural daylight, hyper-detailed skin texture, realistic expression, no text, no watermark, 4k resolution, strict character consistency`;
+  return `${cleaned}, in a scene representing: ${topicPrompt}. Authentic color photograph, realistic natural daylight, sharp focus, real human skin pores, candid shot, no drawing, no cartoon, no anime, no illustration, no 3d render, no blur, no watermark`;
 }

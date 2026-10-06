@@ -136,6 +136,8 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
     gemini_api_key,
     pexels_api_key,
     pixabay_api_key,
+    cloudflare_api_token,
+    pollinations_api_key,
     ...safe
   } = settings;
   const envGemini = Boolean(env.geminiApiKey);
@@ -144,6 +146,10 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
   const dbPexels = Boolean(pexels_api_key && pexels_api_key.trim());
   const envPixabay = Boolean(env.pixabayApiKey);
   const dbPixabay = Boolean(pixabay_api_key && pixabay_api_key.trim());
+  const envCloudflare = Boolean(env.cloudflareAccountId && env.cloudflareAiToken);
+  const dbCloudflare = Boolean(settings.cloudflare_account_id && cloudflare_api_token);
+  const envPollinations = Boolean(env.pollinationsApiKey);
+  const dbPollinations = Boolean(pollinations_api_key && pollinations_api_key.trim());
 
   return {
     ...safe,
@@ -154,6 +160,9 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
     gemini_configured_source: dbGemini ? "database" : envGemini ? "env" : "none",
     pexels_api_key_set: dbPexels || envPexels,
     pixabay_api_key_set: dbPixabay || envPixabay,
+    cloudflare_account_id: settings.cloudflare_account_id || env.cloudflareAccountId || "",
+    cloudflare_configured: dbCloudflare || envCloudflare,
+    pollinations_api_key_set: dbPollinations || envPollinations,
     stock_provider: settings.stock_provider || "any",
     text_provider_pref: settings.text_provider_pref || "auto",
     gemini_enabled: settings.gemini_enabled !== false,
@@ -517,6 +526,9 @@ const SettingsBody = z.object({
     .enum(["conversational", "persuasive", "informative", "inspirational", "humorous", "professional", "random"])
     .optional(),
   copy_custom_rules: z.string().max(1000).optional(),
+  cloudflare_account_id: z.string().trim().optional(),
+  cloudflare_api_token: z.string().trim().optional(),
+  pollinations_api_key: z.string().trim().optional(),
   image_source: z.enum(["ai", "stock", "mixed"]).optional(),
   utm_suffix: z.string().max(200).optional(),
   auto_post_enabled: z.boolean().optional(),
@@ -589,6 +601,15 @@ export async function PATCH(req: Request, ctx: Ctx) {
             {
               error:
                 "As colunas de diretrizes de Copy ainda não existem no seu banco Supabase. Execute o comando SQL no Supabase: ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS copy_language TEXT DEFAULT 'auto', ADD COLUMN IF NOT EXISTS copy_length TEXT DEFAULT 'medium', ADD COLUMN IF NOT EXISTS copy_tone TEXT DEFAULT 'conversational', ADD COLUMN IF NOT EXISTS copy_custom_rules TEXT DEFAULT '';",
+            },
+            409
+          );
+        }
+        if (err instanceof Error && /cloudflare_|pollinations_/.test(err.message)) {
+          return json(
+            {
+              error:
+                "As colunas de Cloudflare/Pollinations ainda não existem no seu banco Supabase. Execute o comando SQL no Supabase: ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS cloudflare_account_id TEXT, ADD COLUMN IF NOT EXISTS cloudflare_api_token TEXT, ADD COLUMN IF NOT EXISTS pollinations_api_key TEXT;",
             },
             409
           );
