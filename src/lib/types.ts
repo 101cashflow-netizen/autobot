@@ -47,6 +47,11 @@ export interface AppSettings {
   pexels_api_key?: string | null;
   pixabay_api_key?: string | null;
   stock_provider?: StockProvider;
+  /** Copywriting AI settings */
+  text_provider_pref?: TextAiProviderPref;
+  gemini_enabled?: boolean;
+  groq_enabled?: boolean;
+  pollinations_enabled?: boolean;
   image_source: ImageSourcePref;
   utm_suffix: string;
   auto_post_enabled: boolean;
@@ -93,6 +98,7 @@ export interface PageCache {
 /** Which free service actually wrote the copy. "template" means every AI
  *  provider was unreachable and the deterministic fallback was used. */
 export type ContentProvider = "groq" | "gemini" | "pollinations" | "template";
+export type TextAiProviderPref = "auto" | "gemini" | "groq" | "pollinations";
 
 export interface GeneratedContent {
   title: string;
@@ -101,6 +107,8 @@ export interface GeneratedContent {
   provider?: ContentProvider;
   /** First provider failure, surfaced so a degraded draft can explain itself. */
   providerError?: string;
+  /** Detailed breakdown of all provider failures */
+  providerErrors?: string[];
 }
 
 /**

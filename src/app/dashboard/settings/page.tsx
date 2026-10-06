@@ -15,11 +15,12 @@ import {
   Sparkle,
   User,
   VideoCamera,
+  Robot,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
-import type { ImageSourcePref } from "@/lib/types";
+import type { ImageSourcePref, TextAiProviderPref } from "@/lib/types";
 
 const TIMEZONES = [
   "Asia/Karachi",
@@ -47,6 +48,10 @@ interface SettingsState {
   default_page_name: string | null;
   gemini_api_key_set?: boolean;
   gemini_configured_source?: "database" | "env" | "none";
+  text_provider_pref?: TextAiProviderPref;
+  gemini_enabled?: boolean;
+  groq_enabled?: boolean;
+  pollinations_enabled?: boolean;
   avatar_enabled?: boolean;
   avatar_name?: string | null;
   avatar_prompt?: string | null;
@@ -90,6 +95,11 @@ function SettingsForm() {
   const [geminiKeyError, setGeminiKeyError] = useState<string | null>(null);
   const [geminiKeySaved, setGeminiKeySaved] = useState(false);
 
+  const [textProviderPref, setTextProviderPref] = useState<TextAiProviderPref>("auto");
+  const [geminiEnabled, setGeminiEnabled] = useState(true);
+  const [groqEnabled, setGroqEnabled] = useState(true);
+  const [pollinationsEnabled, setPollinationsEnabled] = useState(true);
+
   const [avatarEnabled, setAvatarEnabled] = useState(true);
   const [avatarName, setAvatarName] = useState("Nasha");
   const [avatarPrompt, setAvatarPrompt] = useState("");
@@ -124,6 +134,10 @@ function SettingsForm() {
         setSettings(data);
         setAppId(data.facebook_app_id ?? "");
         setConfigId(data.facebook_config_id ?? "");
+        setTextProviderPref(data.text_provider_pref ?? "auto");
+        setGeminiEnabled(data.gemini_enabled !== false);
+        setGroqEnabled(data.groq_enabled !== false);
+        setPollinationsEnabled(data.pollinations_enabled !== false);
         setAvatarEnabled(data.avatar_enabled !== false);
         setAvatarName(data.avatar_name ?? "Nasha");
         setAvatarPrompt(data.avatar_prompt ?? "");
@@ -540,6 +554,165 @@ function SettingsForm() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      </Card>
+
+      {/* Provedores de IA para Redação (Copy) */}
+      <Card>
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
+            <Robot size={22} weight="fill" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="font-heading font-bold text-foreground">Provedores de IA para Redação (Copy)</h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Escolha qual inteligência artificial deve escrever o título, legenda e hashtags dos seus posts, ou ative/desative cada uma.
+                </p>
+              </div>
+              <span className="rounded-full bg-blue-500/10 px-2.5 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400">
+                Texto dos Posts
+              </span>
+            </div>
+
+            <div className="mt-4">
+              <label className="text-xs font-semibold text-muted-foreground">
+                Provedor de Redação Padrão / Prioridade
+              </label>
+              <select
+                value={textProviderPref}
+                onChange={(e) => {
+                  const val = e.target.value as TextAiProviderPref;
+                  setTextProviderPref(val);
+                  save({ text_provider_pref: val });
+                }}
+                className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary sm:w-96"
+              >
+                <option value="auto">Automático (Gemini &gt; Groq &gt; Pollinations)</option>
+                <option value="gemini">Forçar Google Gemini</option>
+                <option value="groq">Forçar Groq (Llama 3)</option>
+                <option value="pollinations">Forçar Pollinations (Gratuito sem chave)</option>
+              </select>
+            </div>
+
+            <div className="mt-4 divide-y divide-border/60 rounded-xl border border-border bg-surface-2/40">
+              {/* Google Gemini */}
+              <div className="flex items-center justify-between p-3.5">
+                <div className="pr-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">Google Gemini AI</span>
+                    {settings.gemini_api_key_set ? (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">
+                        <CheckCircle size={11} /> Chave salva
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
+                        Sem chave
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Melhor qualidade e tom natural em português. Requer chave configurada no cartão abaixo.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !geminiEnabled;
+                    setGeminiEnabled(next);
+                    save({ gemini_enabled: next });
+                  }}
+                  aria-label="Habilitar Google Gemini"
+                  className={cn(
+                    "relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition",
+                    geminiEnabled ? "bg-primary" : "bg-muted-foreground/30"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition",
+                      geminiEnabled ? "left-5.5" : "left-0.5"
+                    )}
+                  />
+                </button>
+              </div>
+
+              {/* Groq */}
+              <div className="flex items-center justify-between p-3.5">
+                <div className="pr-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">Groq (Llama 3)</span>
+                    <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      Variável GROQ_API_KEY
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Geração ultra rápida via nuvem da Groq.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !groqEnabled;
+                    setGroqEnabled(next);
+                    save({ groq_enabled: next });
+                  }}
+                  aria-label="Habilitar Groq"
+                  className={cn(
+                    "relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition",
+                    groqEnabled ? "bg-primary" : "bg-muted-foreground/30"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition",
+                      groqEnabled ? "left-5.5" : "left-0.5"
+                    )}
+                  />
+                </button>
+              </div>
+
+              {/* Pollinations */}
+              <div className="flex items-center justify-between p-3.5">
+                <div className="pr-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">Pollinations AI</span>
+                    <span className="inline-flex items-center gap-0.5 rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">
+                      Gratuito (Sem chave)
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Serviço comunitário público sem necessidade de nenhuma chave de API.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !pollinationsEnabled;
+                    setPollinationsEnabled(next);
+                    save({ pollinations_enabled: next });
+                  }}
+                  aria-label="Habilitar Pollinations"
+                  className={cn(
+                    "relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition",
+                    pollinationsEnabled ? "bg-primary" : "bg-muted-foreground/30"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition",
+                      pollinationsEnabled ? "left-5.5" : "left-0.5"
+                    )}
+                  />
+                </button>
+              </div>
+            </div>
+
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              * Se todos os provedores estiverem desabilitados ou indisponíveis, o bot utilizará um modelo fixo (Template) estruturado para não interromper a publicação.
+            </p>
           </div>
         </div>
       </Card>

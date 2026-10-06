@@ -33,7 +33,10 @@ create table if not exists app_settings (
   avatar_prompt text,
   pexels_api_key text,
   pixabay_api_key text,
-  stock_provider text default 'any',              -- 'pexels' | 'pixabay' | 'any'
+  text_provider_pref text default 'auto',         -- 'auto' | 'gemini' | 'groq' | 'pollinations'
+  gemini_enabled boolean not null default true,
+  groq_enabled boolean not null default true,
+  pollinations_enabled boolean not null default true,
   image_source text not null default 'ai',        -- 'ai' | 'stock' | 'mixed'
   utm_suffix text default '',
   auto_post_enabled boolean not null default false,
@@ -125,5 +128,9 @@ alter table app_settings add column if not exists avatar_prompt text;
 alter table app_settings add column if not exists pexels_api_key text;
 alter table app_settings add column if not exists pixabay_api_key text;
 alter table app_settings add column if not exists stock_provider text default 'any';
+alter table app_settings add column if not exists text_provider_pref text default 'auto';
+alter table app_settings add column if not exists gemini_enabled boolean not null default true;
+alter table app_settings add column if not exists groq_enabled boolean not null default true;
+alter table app_settings add column if not exists pollinations_enabled boolean not null default true;
 alter table posts add column if not exists media_type text not null default 'image';
 alter table posts add column if not exists media_url text;

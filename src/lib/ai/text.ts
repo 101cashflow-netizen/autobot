@@ -1,6 +1,7 @@
 import { env } from "@/lib/env";
 import { getEffectiveGeminiApiKey } from "@/lib/ai/gemini-key";
-import type { ContentProvider, GeneratedContent } from "@/lib/types";
+import { getSettings } from "@/lib/db/settings";
+import type { ContentProvider, GeneratedContent, TextAiProviderPref } from "@/lib/types";
 
 /**
  * Facebook copy generation across LLM providers.
@@ -91,7 +92,7 @@ async function chatCompletion(
 }
 
 async function geminiCompletion(topic: string, apiKey: string): Promise<string> {
-  const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  const models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"];
   let lastError: Error | null = null;
 
   for (const model of models) {
@@ -112,19 +113,26 @@ async function geminiCompletion(topic: string, apiKey: string): Promise<string> 
 
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
-        throw new Error(`gemini (${model}) responded ${res.status}: ${errText}`);
+        let cleanErr = errText;
+        try {
+          const parsed = JSON.parse(errText);
+          cleanErr = parsed?.error?.message || errText;
+        } catch {}
+        throw new Error(`Google Gemini (${model}) erro ${res.status}: ${cleanErr}`);
       }
 
       const data = await res.json();
       const content: unknown = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (typeof content !== "string" || !content.trim()) throw new Error(`Empty completion from ${model}`);
+      if (typeof content !== "string" || !content.trim()) {
+        throw new Error(`Resposta vazia do Gemini (${model})`);
+      }
       return content;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
     }
   }
 
-  throw lastError ?? new Error("All Gemini models failed");
+  throw lastError ?? new Error("Todas as tentativas com Gemini falharam");
 }
 
 function template(topic: string): GeneratedContent {
@@ -139,51 +147,115 @@ function template(topic: string): GeneratedContent {
 
 type Attempt = { provider: ContentProvider; run: () => Promise<string> };
 
-async function providerChain(topic: string): Promise<Attempt[]> {
+async function providerChain(
+  topic: string,
+  preferredProvider?: TextAiProviderPref,
+  failures: string[] = []
+): Promise<Attempt[]> {
   const chain: Attempt[] = [];
+  const settings = await getSettings().catch(() => null);
+  const providerPref = preferredProvider || settings?.text_provider_pref || "auto";
 
-  // Gemini is top priority whenever configured
+  const isGeminiAllowed = settings?.gemini_enabled !== false;
+  const isGroqAllowed = settings?.groq_enabled !== false;
+  const isPollinationsAllowed = settings?.pollinations_enabled !== false;
+
   const geminiKey = await getEffectiveGeminiApiKey();
-  if (geminiKey) {
-    chain.push({
-      provider: "gemini",
-      run: () => geminiCompletion(topic, geminiKey),
-    });
+
+  // If user explicitly chose Gemini
+  if (providerPref === "gemini") {
+    if (geminiKey) {
+      chain.push({
+        provider: "gemini",
+        run: () => geminiCompletion(topic, geminiKey),
+      });
+    } else {
+      failures.push(
+        "Google Gemini: Nenhuma chave API configurada. Salve sua chave no menu Settings > Google Gemini AI ou defina GEMINI_API_KEY."
+      );
+    }
+    return chain;
   }
 
-  // Groq fallback if configured
-  const groqKey = env.groqApiKey;
-  if (groqKey) {
+  // If user explicitly chose Groq
+  if (providerPref === "groq") {
+    const groqKey = env.groqApiKey;
+    if (groqKey) {
+      for (const model of ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]) {
+        chain.push({
+          provider: "groq",
+          run: () =>
+            chatCompletion("https://api.groq.com/openai/v1/chat/completions", model, topic, groqKey),
+        });
+      }
+    } else {
+      failures.push("Groq: Nenhuma chave GROQ_API_KEY configurada nas variáveis de ambiente.");
+    }
+    return chain;
+  }
+
+  // If user explicitly chose Pollinations
+  if (providerPref === "pollinations") {
+    chain.push({
+      provider: "pollinations",
+      run: () => chatCompletion("https://text.pollinations.ai/openai", "openai-fast", topic),
+    });
+    return chain;
+  }
+
+  // Automatic chain (auto)
+  if (isGeminiAllowed) {
+    if (geminiKey) {
+      chain.push({
+        provider: "gemini",
+        run: () => geminiCompletion(topic, geminiKey),
+      });
+    } else {
+      failures.push("Google Gemini: Chave não informada em Settings.");
+    }
+  }
+
+  if (isGroqAllowed && env.groqApiKey) {
     for (const model of ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]) {
       chain.push({
         provider: "groq",
         run: () =>
-          chatCompletion("https://api.groq.com/openai/v1/chat/completions", model, topic, groqKey),
+          chatCompletion("https://api.groq.com/openai/v1/chat/completions", model, topic, env.groqApiKey),
       });
     }
   }
 
-  // Pollinations free fallback
-  chain.push({
-    provider: "pollinations",
-    run: () => chatCompletion("https://text.pollinations.ai/openai", "openai-fast", topic),
-  });
+  if (isPollinationsAllowed) {
+    chain.push({
+      provider: "pollinations",
+      run: () => chatCompletion("https://text.pollinations.ai/openai", "openai-fast", topic),
+    });
+  }
 
   return chain;
 }
 
-export async function generateContent(topic: string): Promise<GeneratedContent> {
+export async function generateContent(
+  topic: string,
+  preferredProvider?: TextAiProviderPref
+): Promise<GeneratedContent> {
   const failures: string[] = [];
-  const chain = await providerChain(topic);
+  const chain = await providerChain(topic, preferredProvider, failures);
 
   for (const { provider, run } of chain) {
     try {
-      return { ...parseContent(await run()), provider };
+      const parsed = parseContent(await run());
+      return { ...parsed, provider, providerErrors: failures };
     } catch (err) {
       failures.push(`${provider}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
   console.warn("[generateContent] every provider failed:", failures.join(" | "));
-  return { ...template(topic), provider: "template", providerError: failures[0] };
+  return {
+    ...template(topic),
+    provider: "template",
+    providerError: failures[0],
+    providerErrors: failures,
+  };
 }

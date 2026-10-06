@@ -19,8 +19,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/cn";
-import { facebookPostUrl } from "@/lib/types";
-import type { GeneratedContent, ImageSource, ImageSourcePref, MediaType, PageCache, StockProvider } from "@/lib/types";
+import type { GeneratedContent, ImageSource, ImageSourcePref, MediaType, PageCache, StockProvider, TextAiProviderPref } from "@/lib/types";
 
 type Step = "idle" | "generating" | "ready";
 
@@ -30,6 +29,7 @@ export default function GeneratePage() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [ownTopics, setOwnTopics] = useState<string[]>([]);
   const [imagePref, setImagePref] = useState<ImageSourcePref>("ai");
+  const [copyAiPref, setCopyAiPref] = useState<TextAiProviderPref>("auto");
   const [avatarName, setAvatarName] = useState<string | null>("Nasha");
 
   const [step, setStep] = useState<Step>("idle");
@@ -81,6 +81,7 @@ export default function GeneratePage() {
       .then((r) => r.json())
       .then((d) => {
         setImagePref(d.image_source ?? "ai");
+        if (d.text_provider_pref) setCopyAiPref(d.text_provider_pref);
         if (d.avatar_enabled !== false) {
           setAvatarName(d.avatar_name || "Nasha");
         } else {
@@ -119,7 +120,7 @@ export default function GeneratePage() {
           fetch("/api/generate/content", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ topic }),
+            body: JSON.stringify({ topic, provider: copyAiPref }),
           }),
           fetch("/api/generate/video", {
             method: "POST",
@@ -148,7 +149,7 @@ export default function GeneratePage() {
           fetch("/api/generate/content", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ topic }),
+            body: JSON.stringify({ topic, provider: copyAiPref }),
           }),
           fetch("/api/generate/image", {
             method: "POST",
@@ -261,33 +262,50 @@ export default function GeneratePage() {
           What should this post be about? Be specific for better results.
         </p>
 
-        <div className="mt-3 flex items-center gap-2">
-          <span className="text-xs font-semibold text-muted-foreground">Formato:</span>
-          <div className="inline-flex rounded-xl border border-border bg-surface-2 p-0.5">
-            <button
-              type="button"
-              onClick={() => setMediaType("image")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition cursor-pointer",
-                mediaType === "image"
-                  ? "bg-background text-foreground shadow-xs font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
+        <div className="mt-3 flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground">Formato:</span>
+            <div className="inline-flex rounded-xl border border-border bg-surface-2 p-0.5">
+              <button
+                type="button"
+                onClick={() => setMediaType("image")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition cursor-pointer",
+                  mediaType === "image"
+                    ? "bg-background text-foreground shadow-xs font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Sparkle size={14} /> Foto / Imagem
+              </button>
+              <button
+                type="button"
+                onClick={() => setMediaType("video")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition cursor-pointer",
+                  mediaType === "video"
+                    ? "bg-background text-foreground shadow-xs font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <VideoCamera size={14} /> Vídeo (Pexels / Pixabay)
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground">IA Redação (Copy):</span>
+            <select
+              value={copyAiPref}
+              onChange={(e) => setCopyAiPref(e.target.value as TextAiProviderPref)}
+              className="rounded-xl border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary"
+              aria-label="IA da Redação"
             >
-              <Sparkle size={14} /> Foto / Imagem
-            </button>
-            <button
-              type="button"
-              onClick={() => setMediaType("video")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition cursor-pointer",
-                mediaType === "video"
-                  ? "bg-background text-foreground shadow-xs font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <VideoCamera size={14} /> Vídeo (Pexels / Pixabay)
-            </button>
+              <option value="auto">Automático (Gemini &gt; Groq &gt; Pollinations)</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="groq">Groq (Llama 3)</option>
+              <option value="pollinations">Pollinations (Gratuito)</option>
+            </select>
           </div>
         </div>
 
@@ -457,15 +475,41 @@ export default function GeneratePage() {
 
             <div className="space-y-4">
               {content.provider === "template" ? (
-                <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                  Every free AI writer was unreachable, so this copy came from a
-                  template. Edit it before posting, or add a free GROQ_API_KEY or
-                  GEMINI_API_KEY to restore AI copy.
-                </p>
+                <div className="space-y-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3.5 text-xs text-amber-700 dark:text-amber-400">
+                  <p className="font-semibold flex items-center gap-1.5">
+                    <WarningCircle size={15} />
+                    Copy gerada a partir de modelo fixo (Template de Fallback).
+                  </p>
+                  {content.providerErrors && content.providerErrors.length > 0 && (
+                    <div className="mt-1 space-y-1 rounded-lg bg-amber-500/10 p-2 text-[11px] font-mono leading-relaxed text-amber-800 dark:text-amber-300">
+                      <p className="font-semibold font-sans">Diagnóstico dos provedores de IA:</p>
+                      <ul className="list-disc pl-4 space-y-0.5">
+                        {content.providerErrors.map((err, idx) => (
+                          <li key={idx}>{err}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <p className="pt-1 text-[11px]">
+                    Dica: Salve sua chave do Google Gemini em{" "}
+                    <Link href="/dashboard/settings" className="font-semibold underline">
+                      Settings
+                    </Link>{" "}
+                    para gerar textos inteligentes automaticamente.
+                  </p>
+                </div>
               ) : content.provider ? (
-                <p className="text-xs text-muted-foreground">
-                  Copy written by <span className="font-medium capitalize">{content.provider}</span>
-                </p>
+                <div className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-3 py-1 text-xs font-medium text-success">
+                  <CheckCircle size={14} />
+                  Copy escrita com sucesso por:{" "}
+                  <strong className="capitalize">
+                    {content.provider === "gemini"
+                      ? "Google Gemini"
+                      : content.provider === "groq"
+                        ? "Groq (Llama 3)"
+                        : "Pollinations AI"}
+                  </strong>
+                </div>
               ) : null}
 
               <div>

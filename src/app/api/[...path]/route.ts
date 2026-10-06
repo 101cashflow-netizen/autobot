@@ -155,6 +155,10 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
     pexels_api_key_set: dbPexels || envPexels,
     pixabay_api_key_set: dbPixabay || envPixabay,
     stock_provider: settings.stock_provider || "any",
+    text_provider_pref: settings.text_provider_pref || "auto",
+    gemini_enabled: settings.gemini_enabled !== false,
+    groq_enabled: settings.groq_enabled !== false,
+    pollinations_enabled: settings.pollinations_enabled !== false,
     // The App ID is public (it travels in the OAuth URL); the secret never
     // leaves the server, so the UI only learns whether one is stored.
     facebook_app_secret_set: Boolean(facebook_app_secret),
@@ -249,7 +253,10 @@ export async function GET(req: Request, ctx: Ctx) {
 
 const LoginBody = z.object({ password: z.string() });
 
-const ContentBody = z.object({ topic: z.string().trim().min(2).max(200) });
+const ContentBody = z.object({
+  topic: z.string().trim().min(2).max(200),
+  provider: z.enum(["auto", "gemini", "groq", "pollinations"]).optional(),
+});
 
 const ImageBody = z.object({
   prompt: z.string().trim().min(2).max(300),
@@ -322,7 +329,7 @@ export async function POST(req: Request, ctx: Ctx) {
     if (route === "generate/content") {
       const parsed = ContentBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return json({ error: "A topic (2-200 characters) is required." }, 400);
-      return json(await generateContent(parsed.data.topic));
+      return json(await generateContent(parsed.data.topic, parsed.data.provider));
     }
 
     if (route === "generate/image") {
@@ -477,6 +484,10 @@ const SettingsBody = z.object({
   pexels_api_key: z.string().trim().optional(),
   pixabay_api_key: z.string().trim().optional(),
   stock_provider: z.enum(["pexels", "pixabay", "any"]).optional(),
+  text_provider_pref: z.enum(["auto", "gemini", "groq", "pollinations"]).optional(),
+  gemini_enabled: z.boolean().optional(),
+  groq_enabled: z.boolean().optional(),
+  pollinations_enabled: z.boolean().optional(),
   image_source: z.enum(["ai", "stock", "mixed"]).optional(),
   utm_suffix: z.string().max(200).optional(),
   auto_post_enabled: z.boolean().optional(),
