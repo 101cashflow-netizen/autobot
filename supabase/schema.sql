@@ -134,3 +134,5 @@ alter table app_settings add column if not exists groq_enabled boolean not null 
 alter table app_settings add column if not exists pollinations_enabled boolean not null default true;
 alter table posts add column if not exists media_type text not null default 'image';
 alter table posts add column if not exists media_url text;
+alter table posts alter column image_url drop not null;
+alter table posts alter column image_source drop not null;

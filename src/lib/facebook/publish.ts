@@ -1,4 +1,4 @@
-import { publishPhoto, publishVideo, NoPageSelectedError } from "@/lib/facebook/client";
+import { publishPhoto, publishVideo, publishText, NoPageSelectedError } from "@/lib/facebook/client";
 import { getPost, updatePostRecord } from "@/lib/db/posts";
 import { getSettings } from "@/lib/db/settings";
 import { composeMessage } from "@/lib/types";
@@ -30,20 +30,32 @@ export async function publishPostNow(postId: string): Promise<Post> {
 
   try {
     const isVideo = post.media_type === "video";
-    const result = isVideo
-      ? await publishVideo({
-          pageId,
-          pageToken,
-          description: composeMessage(post, settings.utm_suffix),
-          videoUrl: post.media_url || post.image_url,
-          title: post.title,
-        })
-      : await publishPhoto({
-          pageId,
-          pageToken,
-          message: composeMessage(post, settings.utm_suffix),
-          imageUrl: post.image_url,
-        });
+    const isText = post.media_type === "text" || (!post.image_url && !post.media_url);
+
+    let result: { id: string };
+    if (isVideo && (post.media_url || post.image_url)) {
+      result = await publishVideo({
+        pageId,
+        pageToken,
+        description: composeMessage(post, settings.utm_suffix),
+        videoUrl: post.media_url || post.image_url,
+        title: post.title,
+      });
+    } else if (isText) {
+      result = await publishText({
+        pageId,
+        pageToken,
+        message: composeMessage(post, settings.utm_suffix),
+        link: post.link_url || undefined,
+      });
+    } else {
+      result = await publishPhoto({
+        pageId,
+        pageToken,
+        message: composeMessage(post, settings.utm_suffix),
+        imageUrl: post.image_url,
+      });
+    }
 
     return await updatePostRecord(postId, {
       status: "posted",

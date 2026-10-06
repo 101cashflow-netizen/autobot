@@ -14,6 +14,7 @@ import {
   CheckCircle,
   ArrowSquareOut,
   VideoCamera,
+  Article,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,8 @@ export default function GeneratePage() {
 
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [regeneratingText, setRegeneratingText] = useState(false);
+  const [regeneratingMedia, setRegeneratingMedia] = useState(false);
 
   const [content, setContent] = useState<GeneratedContent | null>(null);
   const [image, setImage] = useState<{ url: string; source: ImageSource } | null>(null);
@@ -116,7 +119,21 @@ export default function GeneratePage() {
     setVideo(null);
 
     try {
-      if (mediaType === "video") {
+      if (mediaType === "text") {
+        const contentRes = await fetch("/api/generate/content", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ topic, provider: copyAiPref }),
+        });
+
+        if (!contentRes.ok) throw new Error((await contentRes.json()).error ?? "Falha ao gerar o texto.");
+
+        const contentData: GeneratedContent = await contentRes.json();
+        setContent(contentData);
+        setImage(null);
+        setVideo(null);
+        setStep("ready");
+      } else if (mediaType === "video") {
         const [contentRes, videoRes] = await Promise.all([
           fetch("/api/generate/content", {
             method: "POST",
@@ -130,16 +147,17 @@ export default function GeneratePage() {
           }),
         ]);
 
-        if (!contentRes.ok) throw new Error((await contentRes.json()).error ?? "Content generation failed.");
-        if (!videoRes.ok) throw new Error((await videoRes.json()).error ?? "Video generation/search failed.");
+        if (!contentRes.ok) throw new Error((await contentRes.json()).error ?? "Falha ao gerar o texto.");
+        if (!videoRes.ok) throw new Error((await videoRes.json()).error ?? "Falha ao buscar vídeo no Pexels/Pixabay.");
 
         const contentData: GeneratedContent = await contentRes.json();
-        const videoData: {
-          url: string;
-          previewUrl?: string;
-          source: StockProvider;
-          duration?: number;
-        } = await videoRes.json();
+        const rawVideo = await videoRes.json();
+        const videoData = {
+          url: rawVideo.url || rawVideo.videoUrl || "",
+          previewUrl: rawVideo.previewUrl,
+          source: (rawVideo.source || rawVideo.provider || "pexels") as StockProvider,
+          duration: rawVideo.duration,
+        };
 
         setContent(contentData);
         setVideo(videoData);
@@ -159,8 +177,8 @@ export default function GeneratePage() {
           }),
         ]);
 
-        if (!contentRes.ok) throw new Error((await contentRes.json()).error ?? "Content generation failed.");
-        if (!imageRes.ok) throw new Error((await imageRes.json()).error ?? "Image generation failed.");
+        if (!contentRes.ok) throw new Error((await contentRes.json()).error ?? "Falha ao gerar o texto.");
+        if (!imageRes.ok) throw new Error((await imageRes.json()).error ?? "Falha ao gerar a imagem.");
 
         const contentData: GeneratedContent = await contentRes.json();
         const imageData: { url: string; source: ImageSource } = await imageRes.json();
@@ -172,6 +190,64 @@ export default function GeneratePage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       setStep("idle");
+    }
+  }
+
+  async function regenerateText() {
+    if (!topic.trim()) return;
+    setError(null);
+    setRegeneratingText(true);
+    try {
+      const res = await fetch("/api/generate/content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic, provider: copyAiPref }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Erro ao regenerar texto.");
+      const data: GeneratedContent = await res.json();
+      setContent(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao regenerar texto.");
+    } finally {
+      setRegeneratingText(false);
+    }
+  }
+
+  async function regenerateMedia() {
+    if (!topic.trim()) return;
+    setError(null);
+    setRegeneratingMedia(true);
+    try {
+      if (mediaType === "video") {
+        const res = await fetch("/api/generate/video", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: topic }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error ?? "Erro ao buscar outro vídeo.");
+        const rawVideo = await res.json();
+        const videoData = {
+          url: rawVideo.url || rawVideo.videoUrl || "",
+          previewUrl: rawVideo.previewUrl,
+          source: (rawVideo.source || rawVideo.provider || "pexels") as StockProvider,
+          duration: rawVideo.duration,
+        };
+        setVideo(videoData);
+        setImage({ url: videoData.previewUrl || videoData.url, source: "stock" });
+      } else if (mediaType === "image") {
+        const res = await fetch("/api/generate/image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: topic, source: imagePref }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error ?? "Erro ao gerar outra imagem.");
+        const imageData: { url: string; source: ImageSource } = await res.json();
+        setImage(imageData);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao trocar mídia.");
+    } finally {
+      setRegeneratingMedia(false);
     }
   }
 
@@ -188,7 +264,7 @@ export default function GeneratePage() {
   }
 
   async function save(action: "draft" | "schedule" | "post_now") {
-    if (!content || (!image && !video)) return;
+    if (!content || (mediaType !== "text" && !image && !video)) return;
     if (action !== "draft" && !pageId) {
       setError("Choose a Page before scheduling or posting.");
       return;
@@ -202,6 +278,7 @@ export default function GeneratePage() {
     setSaving(action);
     try {
       const isVideo = mediaType === "video" && !!video;
+      const isText = mediaType === "text";
       const res = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -210,9 +287,17 @@ export default function GeneratePage() {
           title: content.title,
           description: content.description,
           hashtags: content.hashtags,
-          imageUrl: isVideo ? (video!.previewUrl || video!.url) : image!.url,
-          imageSource: isVideo ? "stock" : image!.source,
-          mediaType: isVideo ? "video" : "image",
+          imageUrl: isVideo
+            ? video!.previewUrl || video!.url
+            : image
+              ? image.url
+              : "",
+          imageSource: isVideo
+            ? "stock"
+            : image
+              ? image.source
+              : "ai",
+          mediaType: isText ? "text" : isVideo ? "video" : "image",
           mediaUrl: isVideo ? video!.url : undefined,
           linkUrl: linkUrl || undefined,
           pageId: pageId || selectedPage?.page_id || "unset",
@@ -230,12 +315,14 @@ export default function GeneratePage() {
 
       setSuccess(
         action === "draft"
-          ? "Saved as a draft."
+          ? "Salvo como rascunho."
           : action === "schedule"
-            ? "Post scheduled."
+            ? "Post agendado com sucesso."
             : isVideo
-              ? "Video published to Facebook 🎉"
-              : "Published to Facebook 🎉"
+              ? "Vídeo publicado no Facebook 🎉"
+              : isText
+                ? "Post de texto publicado no Facebook 🎉"
+                : "Foto publicada no Facebook 🎉"
       );
       setPublishedUrl(
         action === "post_now" && data.post.facebook_post_id
@@ -291,6 +378,18 @@ export default function GeneratePage() {
               >
                 <VideoCamera size={14} /> Vídeo (Pexels / Pixabay)
               </button>
+              <button
+                type="button"
+                onClick={() => setMediaType("text")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition cursor-pointer",
+                  mediaType === "text"
+                    ? "bg-background text-foreground shadow-xs font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Article size={14} /> Somente Texto
+              </button>
             </div>
           </div>
 
@@ -324,6 +423,13 @@ export default function GeneratePage() {
           </div>
         )}
 
+        {mediaType === "text" && (
+          <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-600 dark:text-blue-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+            Publicação de status somente texto no feed do Facebook (sem foto ou vídeo anexado)
+          </div>
+        )}
+
         <div className="mt-3 flex flex-col gap-3 sm:flex-row">
           <input
             value={topic}
@@ -332,7 +438,9 @@ export default function GeneratePage() {
             placeholder={
               mediaType === "video"
                 ? "Ex: pessoa relaxando na praia ao pôr do sol..."
-                : "e.g. cozy fall living room decor ideas"
+                : mediaType === "text"
+                  ? "Ex: pensamentos sobre disciplina e sucesso nos negócios..."
+                  : "e.g. cozy fall living room decor ideas"
             }
             className="flex-1 rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
           />
@@ -351,6 +459,8 @@ export default function GeneratePage() {
           <Button onClick={generate} disabled={step === "generating"}>
             {mediaType === "video" ? (
               <VideoCamera size={16} weight="fill" />
+            ) : mediaType === "text" ? (
+              <Article size={16} weight="fill" />
             ) : (
               <Sparkle size={16} weight="fill" />
             )}
@@ -358,7 +468,9 @@ export default function GeneratePage() {
               ? "Generating…"
               : mediaType === "video"
                 ? "Gerar Post com Vídeo"
-                : "Generate"}
+                : mediaType === "text"
+                  ? "Gerar Post Somente Texto"
+                  : "Generate"}
           </Button>
         </div>
 
@@ -436,9 +548,10 @@ export default function GeneratePage() {
         </Card>
       )}
 
-      {step === "ready" && content && (image || video) && (
+      {step === "ready" && content && (
         <Card>
           <div className="grid gap-6 md:grid-cols-[320px_1fr]">
+            {/* Coluna da Esquerda: Mídia (Foto/Vídeo) ou Pré-visualização de Post de Texto */}
             <div>
               {mediaType === "video" && video ? (
                 <div className="relative aspect-square overflow-hidden rounded-xl bg-black">
@@ -450,31 +563,79 @@ export default function GeneratePage() {
                     className="h-full w-full object-cover"
                   />
                 </div>
-              ) : image ? (
+              ) : mediaType === "image" && image ? (
                 <div className="relative aspect-square overflow-hidden rounded-xl bg-surface-2">
                   <Image src={image.url} alt={content.title} fill unoptimized className="object-cover" />
                 </div>
+              ) : mediaType === "text" ? (
+                <div className="flex flex-col justify-between h-full min-h-[260px] rounded-xl border border-border bg-gradient-to-br from-primary/5 via-surface-2/40 to-background p-4 shadow-xs">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-xs">
+                        FB
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-foreground leading-none">{selectedPage?.name || "Sua Página"}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Post de status (Somente texto)</p>
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-background/90 p-3.5 border border-border/60 shadow-xs">
+                      <p className="text-sm font-semibold text-foreground leading-snug">{content.title}</p>
+                      <p className="mt-2 text-xs text-muted-foreground leading-relaxed line-clamp-6">{content.description}</p>
+                      {content.hashtags.length > 0 && (
+                        <p className="mt-2 text-xs text-primary font-medium">
+                          {content.hashtags.map((h) => `#${h}`).join(" ")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <Badge className="mt-3 self-start">📝 Post Somente Texto</Badge>
+                </div>
               ) : null}
-              <div className="mt-2 flex items-center justify-between">
-                <Badge>
-                  {mediaType === "video" && video
-                    ? `Vídeo ${video.source.toUpperCase()}${video.duration ? ` · ${video.duration}s` : ""}`
-                    : image?.source === "ai"
-                      ? avatarName
-                        ? `${avatarName} (Avatar IA)`
-                        : "AI generated"
-                      : "Stock photo"}
-                </Badge>
-                <button
-                  onClick={generate}
-                  className="flex cursor-pointer items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary"
-                >
-                  <ArrowClockwise size={13} /> {mediaType === "video" ? "Buscar outro vídeo" : "Regenerate"}
-                </button>
-              </div>
+
+              {mediaType !== "text" && (
+                <div className="mt-2 flex items-center justify-between">
+                  <Badge>
+                    {mediaType === "video" && video
+                      ? `Vídeo ${String(video.source || (video as any).provider || "Stock").toUpperCase()}${video.duration ? ` · ${video.duration}s` : ""}`
+                      : image?.source === "ai"
+                        ? avatarName
+                          ? `${avatarName} (Avatar IA)`
+                          : "AI generated"
+                        : "Stock photo"}
+                  </Badge>
+                  <button
+                    type="button"
+                    onClick={regenerateMedia}
+                    disabled={regeneratingMedia}
+                    className="flex cursor-pointer items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition disabled:opacity-50"
+                  >
+                    <ArrowClockwise size={13} className={regeneratingMedia ? "animate-spin" : ""} />
+                    {regeneratingMedia
+                      ? "Buscando…"
+                      : mediaType === "video"
+                        ? "Trocar vídeo"
+                        : "Regenerar imagem"}
+                  </button>
+                </div>
+              )}
             </div>
 
+            {/* Coluna da Direita: Editor de Conteúdo com botão de Regenerar Texto */}
             <div className="space-y-4">
+              <div className="flex items-center justify-between pb-1 border-b border-border/40">
+                <span className="text-xs font-semibold text-muted-foreground">Conteúdo e Legenda</span>
+                <button
+                  type="button"
+                  onClick={regenerateText}
+                  disabled={regeneratingText}
+                  className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2.5 py-1 text-xs font-medium text-foreground transition hover:border-primary hover:text-primary disabled:opacity-50"
+                >
+                  <ArrowClockwise size={12} className={regeneratingText ? "animate-spin" : ""} />
+                  {regeneratingText ? "Regenerando texto…" : "Regenerar somente texto"}
+                </button>
+              </div>
+
               {content.provider === "template" ? (
                 <div className="space-y-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3.5 text-xs text-amber-700 dark:text-amber-400">
                   <p className="font-semibold flex items-center gap-1.5">

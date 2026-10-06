@@ -64,7 +64,7 @@ export interface AppSettings {
   updated_at: string;
 }
 
-export type MediaType = "image" | "video";
+export type MediaType = "image" | "video" | "text";
 export type StockProvider = "pexels" | "pixabay" | "any";
 
 export interface Post {

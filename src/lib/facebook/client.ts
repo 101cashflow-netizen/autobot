@@ -178,3 +178,31 @@ export async function publishVideo(input: PublishVideoInput): Promise<{ id: stri
   );
   return { id: data.id };
 }
+
+export interface PublishTextInput {
+  pageId: string;
+  pageToken: string;
+  message: string;
+  link?: string;
+}
+
+/**
+ * Publishes a text-only status update to Facebook Page feed.
+ */
+export async function publishText(input: PublishTextInput): Promise<{ id: string }> {
+  const params: Record<string, string> = {
+    message: input.message,
+    access_token: input.pageToken,
+  };
+  if (input.link) {
+    params.link = input.link;
+  }
+
+  const data = await graph(
+    `/${input.pageId}/feed`,
+    params,
+    { method: "POST" }
+  );
+  return { id: data.id };
+}
+

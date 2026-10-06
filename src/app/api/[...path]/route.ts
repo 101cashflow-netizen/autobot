@@ -273,9 +273,9 @@ const CreatePostBody = z.object({
   title: z.string().min(1).max(120),
   description: z.string().min(1).max(500),
   hashtags: z.array(z.string()).max(15).default([]),
-  imageUrl: z.string().url(),
-  imageSource: z.enum(["ai", "stock"]),
-  mediaType: z.enum(["image", "video"]).default("image"),
+  imageUrl: z.string().url().optional().or(z.literal("")),
+  imageSource: z.enum(["ai", "stock"]).optional(),
+  mediaType: z.enum(["image", "video", "text"]).default("image"),
   mediaUrl: z.string().url().optional().or(z.literal("")),
   linkUrl: z.string().url().optional().or(z.literal("")),
   pageId: z.string().min(1),
@@ -347,7 +347,13 @@ export async function POST(req: Request, ctx: Ctx) {
       if (!parsed.success) return json({ error: "A prompt is required." }, 400);
       try {
         const video = await fetchStockVideo(parsed.data.prompt, parsed.data.provider);
-        return json(video);
+        return json({
+          url: video.videoUrl,
+          videoUrl: video.videoUrl,
+          previewUrl: video.previewUrl,
+          source: video.provider,
+          provider: video.provider,
+        });
       } catch (err) {
         return json({ error: err instanceof Error ? err.message : "Video search failed." }, 502);
       }
@@ -368,8 +374,8 @@ export async function POST(req: Request, ctx: Ctx) {
         title: b.title,
         description: b.description,
         hashtags: b.hashtags,
-        image_url: b.imageUrl,
-        image_source: b.imageSource,
+        image_url: b.imageUrl || "",
+        image_source: b.imageSource || "ai",
         media_type: b.mediaType,
         media_url: b.mediaUrl || null,
         link_url: b.linkUrl || null,
