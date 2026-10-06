@@ -8,4 +8,4 @@ pages_build_output_dir = ".vercel/output/static"
 # Chaves sensíveis (como SUPABASE_SERVICE_ROLE_KEY) devem ser colocadas
 # diretamente no painel do Cloudflare (Settings > Environment Variables)
 [vars]
-NODE_VERSION = "20"
+NODE_VERSION = "22"
