@@ -106,9 +106,14 @@ async function hasSession(req: Request): Promise<boolean> {
  */
 async function cronAuthorized(req: Request, url: URL): Promise<boolean> {
   if (await hasSession(req)) return true;
-  if (!env.cronSecret) return false;
-  const auth = req.headers.get("authorization");
-  return auth === `Bearer ${env.cronSecret}` || url.searchParams.get("secret") === env.cronSecret;
+  // If CRON_SECRET is defined in env, enforce it via Bearer token or ?secret=... or ?key=...
+  if (env.cronSecret) {
+    const auth = req.headers.get("authorization");
+    const secretParam = url.searchParams.get("secret") || url.searchParams.get("key");
+    return auth === `Bearer ${env.cronSecret}` || secretParam === env.cronSecret;
+  }
+  // When CRON_SECRET is not configured in env, allow external cron services (e.g. cron-job.org) to trigger the queue
+  return true;
 }
 
 async function guard(route: string, req: Request, url: URL): Promise<Response | null> {
@@ -832,7 +837,7 @@ async function runCron(req: Request, url: URL) {
   const sessionOk = await hasSession(req);
   if (!sessionOk && env.cronSecret) {
     const auth = req.headers.get("authorization");
-    const provided = url.searchParams.get("secret");
+    const provided = url.searchParams.get("secret") || url.searchParams.get("key");
     if (auth !== `Bearer ${env.cronSecret}` && provided !== env.cronSecret) {
       return json({ error: "Unauthorized" }, 401);
     }
@@ -846,6 +851,7 @@ async function runCron(req: Request, url: URL) {
   }
 
   return json({
+    ok: true,
     processedFromQueue: queueResults.length,
     queueResults,
     autopilot: await maybeRunAutopilot(),
