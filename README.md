@@ -44,9 +44,16 @@ by the time you apply you already have the working integration reviewers ask to 
 
 Note that Meta removed personal-profile publishing in 2018. This posts to **Pages**.
 
+## 📚 Manuais e Documentação Completa (Português)
+
+- **[📘 Manual de Instalação e Configuração Completo →](MANUAL_INSTALACAO_CONFIGURACAO.md)** — Do zero ao ar no Cloudflare Pages, Supabase, Meta App, IAs (Gemini, Groq, FLUX.1) e automação com cron-job.org.
+- **[📖 Manual de Uso e Boas Práticas →](MANUAL_USO_BOAS_PRATICAS.md)** — Guia completo de criação de posts (foto, vídeo e texto), avatar IA Nasha, copywriting, gerenciamento de fila e prevenção de bloqueios no Facebook.
+
+---
+
 ## Deploy your own
 
-**[Full installation guide →](INSTALL.md)** — written for people who do not write code: every screen, every value, and the Meta settings that trip everyone up. About 30 minutes.
+**[Full installation guide (English) →](INSTALL.md)** — written for people who do not write code: every screen, every value, and the Meta settings that trip everyone up. About 30 minutes.
 
 The short version. You need three free accounts: Vercel, Supabase, and a Meta developer account.
 
