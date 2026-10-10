@@ -68,9 +68,33 @@ export interface AppSettings {
   posting_hours: number[];
   timezone: string;
   last_auto_post_at: string | null;
+  /** Google Drive and Reels Automation Settings */
+  google_drive_folder_id?: string | null;
+  google_drive_api_key?: string | null;
+  reels_auto_post_enabled?: boolean;
+  reels_posts_per_day?: number;
+  reels_posting_hours?: number[];
+  last_reels_auto_post_at?: string | null;
   /** Absent on databases created before topics existed; treat as "mine". */
   topic_source?: TopicSource;
   updated_at: string;
+}
+
+export type VideoLibraryStatus = "pending" | "scheduled" | "published" | "failed";
+
+export interface VideoLibraryItem {
+  id: string;
+  drive_file_id: string;
+  title: string;
+  raw_filename: string;
+  video_url: string;
+  file_size?: number | null;
+  status: VideoLibraryStatus;
+  scheduled_at?: string | null;
+  published_at?: string | null;
+  facebook_post_id?: string | null;
+  error_message?: string | null;
+  created_at: string;
 }
 
 export type MediaType = "image" | "video" | "text";

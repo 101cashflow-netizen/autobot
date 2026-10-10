@@ -32,6 +32,9 @@ export async function createPostRecord(
     "id" | "created_at" | "status" | "posted_at" | "facebook_post_id" | "error_message"
   > & {
     status: PostStatus;
+    posted_at?: string | null;
+    facebook_post_id?: string | null;
+    error_message?: string | null;
   }
 ): Promise<Post> {
   const db = supabaseAdmin();

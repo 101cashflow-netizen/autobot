@@ -76,6 +76,11 @@ interface SettingsState {
   posting_hours: number[];
   timezone: string;
   topic_source?: "mine" | "trending" | "mixed";
+  google_drive_folder_id?: string;
+  google_drive_api_key_set?: boolean;
+  reels_auto_post_enabled?: boolean;
+  reels_posts_per_day?: number;
+  reels_posting_hours?: number[];
 }
 
 export default function SettingsPage() {
@@ -144,6 +149,15 @@ function SettingsForm() {
   const [savingImageAiKeys, setSavingImageAiKeys] = useState(false);
   const [imageAiKeysError, setImageAiKeysError] = useState<string | null>(null);
   const [imageAiKeysSaved, setImageAiKeysSaved] = useState(false);
+
+  const [driveFolderId, setDriveFolderId] = useState("");
+  const [driveApiKeyInput, setDriveApiKeyInput] = useState("");
+  const [savingDrive, setSavingDrive] = useState(false);
+  const [driveError, setDriveError] = useState<string | null>(null);
+  const [driveSaved, setDriveSaved] = useState(false);
+  const [reelsAutoPostEnabled, setReelsAutoPostEnabled] = useState(false);
+  const [reelsPostsPerDay, setReelsPostsPerDay] = useState(1);
+  const [reelsPostingHours, setReelsPostingHours] = useState<number[]>([11, 17]);
   // Read from the browser rather than configured, so they always match the
   // hostname the user is actually on — the values Facebook compares against.
   const [redirectUri, setRedirectUri] = useState("");
@@ -178,6 +192,10 @@ function SettingsForm() {
         setAvatarPrompt(data.avatar_prompt ?? "");
         setStockProvider(data.stock_provider ?? "any");
         setCfAccountIdInput(data.cloudflare_account_id ?? "");
+        setDriveFolderId(data.google_drive_folder_id ?? "");
+        setReelsAutoPostEnabled(data.reels_auto_post_enabled === true);
+        setReelsPostsPerDay(data.reels_posts_per_day || 1);
+        setReelsPostingHours(data.reels_posting_hours || [11, 17]);
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load settings."));
   }, []);
@@ -444,6 +462,44 @@ function SettingsForm() {
     const next = has ? settings.posting_hours.filter((h) => h !== hour) : [...settings.posting_hours, hour].sort((a, b) => a - b);
     setSettings({ ...settings, posting_hours: next });
     save({ posting_hours: next });
+  }
+
+  async function saveDriveSettings() {
+    setDriveError(null);
+    setDriveSaved(false);
+    setSavingDrive(true);
+    try {
+      const payload: Record<string, any> = {
+        google_drive_folder_id: driveFolderId.trim(),
+        reels_auto_post_enabled: reelsAutoPostEnabled,
+        reels_posts_per_day: Number(reelsPostsPerDay) || 1,
+        reels_posting_hours: reelsPostingHours,
+      };
+      if (driveApiKeyInput.trim()) {
+        payload.google_drive_api_key = driveApiKeyInput.trim();
+      }
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro ao salvar configurações do Google Drive.");
+      setSettings((s) => (s ? { ...s, ...data } : s));
+      setDriveApiKeyInput("");
+      setDriveSaved(true);
+      setTimeout(() => setDriveSaved(false), 3000);
+    } catch (err) {
+      setDriveError(err instanceof Error ? err.message : "Erro ao salvar configurações do Google Drive.");
+    } finally {
+      setSavingDrive(false);
+    }
+  }
+
+  function toggleReelsHour(hour: number) {
+    const has = reelsPostingHours.includes(hour);
+    const next = has ? reelsPostingHours.filter((h) => h !== hour) : [...reelsPostingHours, hour].sort((a, b) => a - b);
+    setReelsPostingHours(next);
   }
 
   if (loadError) {
@@ -1435,6 +1491,182 @@ function SettingsForm() {
             <div className="mt-4 flex items-center gap-2">
               <Button size="sm" onClick={saveStockKeys} disabled={savingStockKeys}>
                 {savingStockKeys ? "Salvando…" : "Salvar chaves de mídia"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Biblioteca de Vídeos & Reels (Google Drive) */}
+      <Card>
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
+            <VideoCamera size={22} weight="fill" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-heading font-bold text-foreground">
+                Biblioteca de Vídeos &amp; Reels (Google Drive)
+              </h2>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                    driveFolderId
+                      ? "bg-success/10 text-success"
+                      : "bg-surface-2 text-muted-foreground"
+                  )}
+                >
+                  {driveFolderId ? <CheckCircle size={13} /> : null}
+                  Pasta: {driveFolderId ? "Configurada" : "Não configurada"}
+                </span>
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                    reelsAutoPostEnabled
+                      ? "bg-primary/10 text-primary"
+                      : "bg-surface-2 text-muted-foreground"
+                  )}
+                >
+                  Automação: {reelsAutoPostEnabled ? "Ativada" : "Pausada"}
+                </span>
+              </div>
+            </div>
+
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Conecte uma pasta pública do Google Drive para importar seus vídeos curtos (ex: gerados no Google Flow). O bot sincroniza a biblioteca, gera copy contextual via Gemini 3.6-Flash e publica diretamente nos Reels do Facebook via link direto, sem consumir storage do Supabase.
+            </p>
+
+            <div className="mt-3 flex flex-wrap gap-4 text-xs">
+              <Link
+                href="/dashboard/reels"
+                className="font-medium text-primary hover:underline"
+              >
+                Gerenciar Biblioteca de Vídeos &amp; Reels ↗
+              </Link>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Link ou ID da Pasta do Google Drive
+                </label>
+                <input
+                  type="text"
+                  value={driveFolderId}
+                  onChange={(e) => setDriveFolderId(e.target.value)}
+                  placeholder="https://drive.google.com/drive/folders/1ABC... ou ID da pasta"
+                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Certifique-se de que a pasta esteja com acesso &ldquo;Qualquer pessoa com o link pode ver&rdquo;.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Chave API Google Drive (Opcional)
+                </label>
+                <input
+                  type="password"
+                  value={driveApiKeyInput}
+                  onChange={(e) => setDriveApiKeyInput(e.target.value)}
+                  placeholder={
+                    settings?.google_drive_api_key_set
+                      ? "•••• chave salva — digite para substituir"
+                      : "Opcional (se vazio, reutiliza sua chave Gemini)"
+                  }
+                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Necessária se a chave do Gemini não tiver a permissão Google Drive API v3 ativada.
+                </p>
+              </div>
+            </div>
+
+            {/* Configurações de Autopilot de Reels */}
+            <div className="mt-5 border-t border-border pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">
+                    Publicação Automática de Reels (Autopilot)
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Publica automaticamente o próximo vídeo pendente da biblioteca nos horários programados.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReelsAutoPostEnabled(!reelsAutoPostEnabled)}
+                  aria-label="Alternar autopost de Reels"
+                  className={cn(
+                    "relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition",
+                    reelsAutoPostEnabled ? "bg-primary" : "bg-surface-2"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "absolute top-1 h-5 w-5 rounded-full bg-white shadow transition",
+                      reelsAutoPostEnabled ? "left-6" : "left-1"
+                    )}
+                  />
+                </button>
+              </div>
+
+              {reelsAutoPostEnabled && (
+                <div className="mt-4 space-y-4">
+                  <div className="max-w-xs">
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Reels por dia
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={reelsPostsPerDay}
+                      onChange={(e) => setReelsPostsPerDay(Number(e.target.value))}
+                      className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Horários permitidos para publicação de Reels (horário local)
+                    </label>
+                    <div className="mt-1.5 grid grid-cols-6 gap-1.5 sm:grid-cols-12">
+                      {Array.from({ length: 24 }, (_, h) => h).map((h) => (
+                        <button
+                          key={h}
+                          type="button"
+                          onClick={() => toggleReelsHour(h)}
+                          className={cn(
+                            "cursor-pointer rounded-lg py-1.5 text-xs font-medium transition",
+                            reelsPostingHours.includes(h)
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-surface-2 text-muted-foreground hover:bg-border"
+                          )}
+                        >
+                          {h}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {driveError && (
+              <p className="mt-3 text-xs text-destructive">{driveError}</p>
+            )}
+            {driveSaved && (
+              <p className="mt-3 text-xs font-medium text-success">
+                Configurações do Google Drive e Reels salvas com sucesso! ✓
+              </p>
+            )}
+
+            <div className="mt-4 flex items-center gap-2">
+              <Button size="sm" onClick={saveDriveSettings} disabled={savingDrive}>
+                {savingDrive ? "Salvando…" : "Salvar Configurações do Google Drive & Reels"}
               </Button>
             </div>
           </div>

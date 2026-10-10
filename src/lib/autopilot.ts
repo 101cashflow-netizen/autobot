@@ -118,3 +118,48 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
 
   return { ran: true, post: published };
 }
+
+/**
+ * Autopilot for short-form Reels from the Google Drive Video Library.
+ * On each cron tick, checks if reels autopilot is enabled, allowed hours,
+ * and if so picks the next pending video, generates AI copy, and publishes.
+ */
+export async function maybeRunReelsAutopilot(): Promise<{
+  ran: boolean;
+  video?: import("@/lib/types").VideoLibraryItem;
+  reason?: string;
+}> {
+  const { getNextPendingVideo } = await import("@/lib/db/videos");
+  const { publishReelFromLibrary } = await import("@/lib/facebook/reels");
+  const settings = await getSettings();
+
+  if (!settings.reels_auto_post_enabled) return { ran: false, reason: "disabled" };
+  if (!isFacebookConnected(settings)) return { ran: false, reason: "not_connected" };
+  if (!settings.default_page_id || !settings.default_page_token) {
+    return { ran: false, reason: "no_default_page" };
+  }
+
+  const { dateKey, hour } = localParts(new Date(), settings.timezone);
+  const postingHours = settings.reels_posting_hours || [11, 17];
+  if (!postingHours.includes(hour)) {
+    return { ran: false, reason: "outside_posting_hours" };
+  }
+
+  if (settings.last_reels_auto_post_at) {
+    const last = localParts(new Date(settings.last_reels_auto_post_at), settings.timezone);
+    if (last.dateKey === dateKey && last.hour === hour) {
+      return { ran: false, reason: "already_posted_this_slot" };
+    }
+  }
+
+  const nextVideo = await getNextPendingVideo();
+  if (!nextVideo) return { ran: false, reason: "no_pending_videos" };
+
+  try {
+    const published = await publishReelFromLibrary(nextVideo.id);
+    await updateSettings({ last_reels_auto_post_at: new Date().toISOString() });
+    return { ran: true, video: published };
+  } catch (err) {
+    return { ran: false, reason: err instanceof Error ? err.message : "publish_failed" };
+  }
+}

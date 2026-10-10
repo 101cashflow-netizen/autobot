@@ -145,6 +145,7 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
     pixabay_api_key,
     cloudflare_api_token,
     pollinations_api_key,
+    google_drive_api_key,
     ...safe
   } = settings;
   const envGemini = Boolean(env.geminiApiKey);
@@ -162,6 +163,11 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
 
   return {
     ...safe,
+    google_drive_folder_id: settings.google_drive_folder_id || "",
+    google_drive_api_key_set: Boolean(google_drive_api_key && google_drive_api_key.trim()),
+    reels_auto_post_enabled: settings.reels_auto_post_enabled === true,
+    reels_posts_per_day: settings.reels_posts_per_day || 1,
+    reels_posting_hours: settings.reels_posting_hours || [11, 17],
     avatar_enabled: settings.avatar_enabled !== false,
     avatar_name: settings.avatar_name || DEFAULT_AVATAR_NAME,
     avatar_prompt: settings.avatar_prompt || DEFAULT_AVATAR_PROMPT,
@@ -217,6 +223,23 @@ export async function GET(req: Request, ctx: Ctx) {
         status: status ? (status.split(",") as PostStatus[]) : undefined,
       });
       return json({ posts });
+    }
+
+    if (route === "reels") {
+      const { listVideoLibrary } = await import("@/lib/db/videos");
+      const status = url.searchParams.get("status");
+      const [videos, settings] = await Promise.all([
+        listVideoLibrary({
+          status: status ? (status.split(",") as any) : undefined,
+        }),
+        getSettings(),
+      ]);
+      return json({
+        videos,
+        folder_id: settings.google_drive_folder_id || null,
+        auto_post_enabled: settings.reels_auto_post_enabled === true,
+        posts_per_day: settings.reels_posts_per_day || 1,
+      });
     }
 
     if (route === "facebook/pages") {
@@ -448,6 +471,47 @@ export async function POST(req: Request, ctx: Ctx) {
       }
     }
 
+    // reels/sync (Scans Google Drive folder and imports new videos)
+    if (route === "reels/sync") {
+      const settings = await getSettings();
+      const body = await req.json().catch(() => ({}));
+      const folderInput = (body?.folderId || settings.google_drive_folder_id || "").trim();
+      if (!folderInput) {
+        return json({ error: "Informe o link ou ID da pasta do Google Drive." }, 400);
+      }
+      const { getEffectiveGeminiApiKey } = await import("@/lib/ai/gemini-key");
+      const apiKey = (settings.google_drive_api_key || (await getEffectiveGeminiApiKey()) || "").trim();
+      if (!apiKey) {
+        return json(
+          {
+            error:
+              "Chave de API do Google necessária para listar a pasta. Salve sua chave do Google Drive ou Gemini nas Configurações.",
+          },
+          400
+        );
+      }
+      const { listDriveFolderVideos } = await import("@/lib/drive");
+      const { syncDriveVideos } = await import("@/lib/db/videos");
+      try {
+        const files = await listDriveFolderVideos(folderInput, apiKey);
+        const res = await syncDriveVideos(files);
+        return json({ ok: true, found: files.length, ...res });
+      } catch (err) {
+        return json({ error: err instanceof Error ? err.message : "Erro ao sincronizar pasta do Google Drive." }, 502);
+      }
+    }
+
+    // reels/<id>/post-now
+    if (path.length === 3 && path[0] === "reels" && path[2] === "post-now") {
+      const { publishReelFromLibrary } = await import("@/lib/facebook/reels");
+      try {
+        const video = await publishReelFromLibrary(path[1]);
+        return json({ ok: true, video });
+      } catch (err) {
+        return json({ error: err instanceof Error ? err.message : "Falha ao publicar Reel." }, 502);
+      }
+    }
+
     if (route === "facebook/default-page") {
       const parsed = DefaultPageBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return json({ error: "pageId is required." }, 400);
@@ -552,6 +616,11 @@ const SettingsBody = z.object({
   posting_hours: z.array(z.number().int().min(0).max(23)).min(1).max(24).optional(),
   timezone: z.string().min(1).max(64).optional(),
   topic_source: z.enum(["mine", "trending", "mixed"]).optional(),
+  google_drive_folder_id: z.string().trim().optional(),
+  google_drive_api_key: z.string().trim().optional(),
+  reels_auto_post_enabled: z.boolean().optional(),
+  reels_posts_per_day: z.number().int().min(1).max(20).optional(),
+  reels_posting_hours: z.array(z.number().int().min(0).max(23)).min(1).max(24).optional(),
 });
 
 const UpdateTopicBody = z.object({
@@ -685,6 +754,21 @@ export async function PATCH(req: Request, ctx: Ctx) {
       return json({ post: updated });
     }
 
+    // reels/<id>
+    if (path.length === 2 && path[0] === "reels") {
+      const { updateVideoItem } = await import("@/lib/db/videos");
+      const body = await req.json().catch(() => ({}));
+      const updated = await updateVideoItem(path[1], {
+        ...(body.title !== undefined && { title: body.title }),
+        ...(body.status !== undefined && {
+          status: body.status,
+          ...(body.status !== "failed" ? { error_message: null } : {}),
+        }),
+        ...(body.scheduledAt !== undefined && { scheduled_at: body.scheduledAt }),
+      });
+      return json({ ok: true, video: updated });
+    }
+
     return notFound();
   });
 }
@@ -702,6 +786,12 @@ export async function DELETE(req: Request, ctx: Ctx) {
 
     if (path.length === 2 && path[0] === "posts") {
       await deletePostRecord(path[1]);
+      return json({ ok: true });
+    }
+
+    if (path.length === 2 && path[0] === "reels") {
+      const { deleteVideoItem } = await import("@/lib/db/videos");
+      await deleteVideoItem(path[1]);
       return json({ ok: true });
     }
 
@@ -853,10 +943,12 @@ async function runCron(req: Request, url: URL) {
     queueResults.push({ id: result.id, status: result.status });
   }
 
+  const { maybeRunReelsAutopilot } = await import("@/lib/autopilot");
   return json({
     ok: true,
     processedFromQueue: queueResults.length,
     queueResults,
     autopilot: await maybeRunAutopilot(),
+    reelsAutopilot: await maybeRunReelsAutopilot(),
   });
 }

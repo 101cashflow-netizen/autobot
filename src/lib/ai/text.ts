@@ -463,3 +463,69 @@ export async function generateContent(
     providerErrors: failures,
   };
 }
+
+export function buildReelsSystemPrompt(guidelines: CopyGuidelines): string {
+  const lang = guidelines.language || "auto";
+  const langRule = (() => {
+    switch (lang) {
+      case "pt":
+        return "- language: Write the entire caption (hook, description, and hashtags) in natural, high-converting Brazilian Portuguese (pt-BR).";
+      case "en":
+        return "- language: Write the entire caption in natural, high-converting English.";
+      case "es":
+        return "- language: Write the entire caption in natural, high-converting Spanish.";
+      default:
+        return "- language: Write the entire caption in the exact same language as the provided video topic.";
+    }
+  })();
+
+  const customRule = guidelines.customRules?.trim()
+    ? `\n- Additional user instructions: ${guidelines.customRules.trim()}`
+    : "";
+
+  return `You are an expert short-form video copywriter specializing in high-viral Facebook Reels and Instagram Reels. Given a video topic or title, write a captivating Reels caption in strict JSON with this exact shape and nothing else:
+{"title": string, "description": string, "hashtags": string[]}
+
+Rules:
+${langRule}
+- title: Scroll-stopping 3-second hook for the Reel, <= 60 characters. Must create instant curiosity, ask a provocative question, or call out a relatable problem. At most one emoji.
+- description: Concise, punchy caption (<= 250 characters). 1-2 dynamic sentences explaining the core takeaway of the video, ending with a strong call-to-action (e.g. "Salve para ver depois", "Compartilhe com quem precisa", "Deixe seu comentário").
+- hashtags: 4 to 6 hashtags. Include at least 2 viral reels tags (e.g., reels, viral, reelsfb) and 2 to 3 tags directly relevant to the topic. All lowercase, without '#' symbol, no spaces.
+- Output ONLY the JSON object. No markdown fences, no commentary.${customRule}`;
+}
+
+export async function generateReelsContent(
+  videoTopic: string,
+  preferredProvider?: TextAiProviderPref,
+  guidelines?: CopyGuidelines
+): Promise<GeneratedContent> {
+  const failures: string[] = [];
+  const settings = await getSettings().catch(() => null);
+
+  const effectiveGuidelines: CopyGuidelines = {
+    language: guidelines?.language || settings?.copy_language || "auto",
+    length: "short",
+    tone: guidelines?.tone || settings?.copy_tone || "conversational",
+    customRules: guidelines?.customRules ?? settings?.copy_custom_rules ?? "",
+  };
+
+  const systemPrompt = buildReelsSystemPrompt(effectiveGuidelines);
+  const chain = await providerChain(videoTopic, preferredProvider, failures, systemPrompt);
+
+  for (const { provider, run } of chain) {
+    try {
+      const parsed = parseContent(await run());
+      return { ...parsed, provider, providerErrors: failures };
+    } catch (err) {
+      failures.push(`${provider}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  console.warn("[generateReelsContent] every provider failed:", failures.join(" | "));
+  return {
+    ...template(videoTopic, effectiveGuidelines.language),
+    provider: "template",
+    providerError: failures[0],
+    providerErrors: failures,
+  };
+}
