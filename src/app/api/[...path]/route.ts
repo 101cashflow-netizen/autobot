@@ -471,6 +471,27 @@ export async function POST(req: Request, ctx: Ctx) {
       }
     }
 
+    // reels/import-links (Imports one or multiple Google Drive video links)
+    if (route === "reels/import-links") {
+      const body = await req.json().catch(() => ({}));
+      const links = String(body?.links || "").trim();
+      if (!links) {
+        return json({ error: "Cole ao menos um link de vídeo do Google Drive." }, 400);
+      }
+
+      const settings = await getSettings();
+      const { getEffectiveGeminiApiKey } = await import("@/lib/ai/gemini-key");
+      const apiKey = (settings.google_drive_api_key || (await getEffectiveGeminiApiKey()) || "").trim();
+
+      const { addVideosFromLinks } = await import("@/lib/db/videos");
+      try {
+        const res = await addVideosFromLinks(links, apiKey || undefined);
+        return json({ ok: true, ...res });
+      } catch (err) {
+        return json({ error: err instanceof Error ? err.message : "Erro ao importar links de vídeo." }, 400);
+      }
+    }
+
     // reels/sync (Scans Google Drive folder and imports new videos)
     if (route === "reels/sync") {
       const settings = await getSettings();
@@ -481,19 +502,11 @@ export async function POST(req: Request, ctx: Ctx) {
       }
       const { getEffectiveGeminiApiKey } = await import("@/lib/ai/gemini-key");
       const apiKey = (settings.google_drive_api_key || (await getEffectiveGeminiApiKey()) || "").trim();
-      if (!apiKey) {
-        return json(
-          {
-            error:
-              "Chave de API do Google necessária para listar a pasta. Salve sua chave do Google Drive ou Gemini nas Configurações.",
-          },
-          400
-        );
-      }
+
       const { listDriveFolderVideos } = await import("@/lib/drive");
       const { syncDriveVideos } = await import("@/lib/db/videos");
       try {
-        const files = await listDriveFolderVideos(folderInput, apiKey);
+        const files = await listDriveFolderVideos(folderInput, apiKey || undefined);
         const res = await syncDriveVideos(files);
         return json({ ok: true, found: files.length, ...res });
       } catch (err) {

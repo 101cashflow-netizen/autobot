@@ -1,5 +1,11 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { cleanFilenameToTopic, getDirectDriveDownloadUrl, type DriveFolderFile } from "@/lib/drive";
+import {
+  cleanFilenameToTopic,
+  getDirectDriveDownloadUrl,
+  parseDriveVideoLinks,
+  fetchDriveFileMetadata,
+  type DriveFolderFile,
+} from "@/lib/drive";
 import type { VideoLibraryItem, VideoLibraryStatus } from "@/lib/types";
 
 export async function listVideoLibrary(
@@ -76,6 +82,71 @@ export async function syncDriveVideos(files: DriveFolderFile[]): Promise<{ inser
   if (insertErr) throw new Error(`Erro ao salvar vídeos importados: ${insertErr.message}`);
 
   return { inserted: newFiles.length, total: files.length };
+}
+
+/**
+ * Parses raw text with one or more Google Drive video links and imports them to the library.
+ */
+export async function addVideosFromLinks(
+  linksText: string,
+  apiKey?: string | null
+): Promise<{ inserted: number; total: number; existing: number }> {
+  const parsed = parseDriveVideoLinks(linksText);
+  if (parsed.length === 0) {
+    throw new Error("Nenhum link válido do Google Drive foi encontrado no texto colado.");
+  }
+
+  const db = supabaseAdmin();
+  const fileIds = parsed.map((p) => p.id);
+
+  const { data: existing, error: fetchErr } = await db
+    .from("video_library")
+    .select("drive_file_id")
+    .in("drive_file_id", fileIds);
+
+  if (fetchErr) {
+    if (fetchErr.message.includes("does not exist") || fetchErr.code === "42P01") {
+      throw new Error(
+        "A tabela video_library ainda não existe no seu Supabase. Execute o comando SQL em supabase/schema.sql."
+      );
+    }
+    throw fetchErr;
+  }
+
+  const existingSet = new Set((existing ?? []).map((e: { drive_file_id: string }) => e.drive_file_id));
+  const toProcess = parsed.filter((p) => !existingSet.has(p.id));
+
+  if (toProcess.length === 0) {
+    return { inserted: 0, total: parsed.length, existing: existingSet.size };
+  }
+
+  const itemsToInsert = await Promise.all(
+    toProcess.map(async (item) => {
+      let meta = await fetchDriveFileMetadata(item.id, apiKey);
+      const rawName = meta?.name || item.title || `Vídeo ${item.id.slice(0, 8)}`;
+      const title = item.title || cleanFilenameToTopic(rawName);
+
+      return {
+        drive_file_id: item.id,
+        title,
+        raw_filename: rawName,
+        video_url: getDirectDriveDownloadUrl(item.id),
+        file_size: meta?.size ?? null,
+        status: "pending" as const,
+      };
+    })
+  );
+
+  const { error: insertErr } = await db.from("video_library").insert(itemsToInsert);
+  if (insertErr) {
+    throw new Error(`Erro ao salvar vídeos importados: ${insertErr.message}`);
+  }
+
+  return {
+    inserted: itemsToInsert.length,
+    total: parsed.length,
+    existing: existingSet.size,
+  };
 }
 
 export async function updateVideoItem(id: string, patch: Partial<VideoLibraryItem>): Promise<VideoLibraryItem> {

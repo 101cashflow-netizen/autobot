@@ -17,6 +17,12 @@ import {
   GearSix,
   Folder,
   Info,
+  Plus,
+  LinkSimple,
+  Copy,
+  Code,
+  CaretDown,
+  CaretUp,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,6 +31,27 @@ import { facebookPostUrl } from "@/lib/types";
 import type { VideoLibraryItem, VideoLibraryStatus } from "@/lib/types";
 
 type FilterTab = "all" | "pending" | "published" | "failed";
+
+const APPS_SCRIPT_CODE = `function doGet(e) {
+  var folderId = e.parameter.folderId;
+  if (!folderId) {
+    return ContentService.createTextOutput(JSON.stringify({ error: "Missing folderId parameter" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  var folder = DriveApp.getFolderById(folderId);
+  var files = folder.getFiles();
+  var list = [];
+  while (files.hasNext()) {
+    var f = files.next();
+    var mime = f.getMimeType();
+    var name = f.getName();
+    if (mime.indexOf("video/") === 0 || /\\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(name)) {
+      list.push({ id: f.getId(), name: name, size: f.getSize(), mimeType: mime });
+    }
+  }
+  return ContentService.createTextOutput(JSON.stringify({ files: list }))
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
 
 export default function ReelsLibraryPage() {
   const [videos, setVideos] = useState<VideoLibraryItem[]>([]);
@@ -38,6 +65,13 @@ export default function ReelsLibraryPage() {
   // Syncing state
   const [syncing, setSyncing] = useState(false);
   const [inputFolderId, setInputFolderId] = useState("");
+  const [showScriptHelp, setShowScriptHelp] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  // Link import modal
+  const [linksModalOpen, setLinksModalOpen] = useState(false);
+  const [linksInput, setLinksInput] = useState("");
+  const [importingLinks, setImportingLinks] = useState(false);
 
   // Filter & Search
   const [tab, setTab] = useState<FilterTab>("all");
@@ -89,7 +123,7 @@ export default function ReelsLibraryPage() {
       if (!res.ok) throw new Error(data.error ?? "Falha ao sincronizar pasta do Google Drive.");
 
       setSyncNotice(
-        `Sincronização concluída! ${data.added ?? 0} novos vídeos adicionados (Total na pasta: ${data.found ?? 0}).`
+        `Sincronização concluída! ${data.inserted ?? data.added ?? 0} novos vídeos adicionados (Total na pasta: ${data.found ?? 0}).`
       );
       await load();
       setTimeout(() => setSyncNotice(null), 5000);
@@ -97,6 +131,34 @@ export default function ReelsLibraryPage() {
       setError(err instanceof Error ? err.message : "Erro na sincronização.");
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function handleImportLinks() {
+    if (!linksInput.trim()) return;
+    setImportingLinks(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/reels/import-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ links: linksInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Falha ao importar links.");
+
+      const msg = `Sucesso: ${data.inserted ?? 0} vídeo(s) importado(s) para a biblioteca! ${
+        data.existing > 0 ? `(${data.existing} já existiam)` : ""
+      }`;
+      setActionSuccess(msg);
+      setLinksInput("");
+      setLinksModalOpen(false);
+      await load();
+      setTimeout(() => setActionSuccess(null), 6000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao importar links.");
+    } finally {
+      setImportingLinks(false);
     }
   }
 
@@ -185,6 +247,12 @@ export default function ReelsLibraryPage() {
     }
   }
 
+  function copyScriptCode() {
+    navigator.clipboard.writeText(APPS_SCRIPT_CODE);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  }
+
   // Counts
   const pendingCount = videos.filter((v) => v.status === "pending").length;
   const publishedCount = videos.filter((v) => v.status === "published").length;
@@ -224,15 +292,19 @@ export default function ReelsLibraryPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Link href="/dashboard/settings">
-            <Button variant="secondary" size="sm" className="gap-1.5">
-              <GearSix size={16} />
-              Configurar Autopilot
-            </Button>
-          </Link>
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
+            onClick={() => setLinksModalOpen(true)}
+            className="gap-1.5 shadow"
+          >
+            <Plus size={16} weight="bold" />
+            Adicionar Vídeos (Colar Links)
+          </Button>
+
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={handleSync}
             disabled={syncing}
             className="gap-1.5"
@@ -240,6 +312,13 @@ export default function ReelsLibraryPage() {
             <ArrowsClockwise size={16} className={cn(syncing && "animate-spin")} />
             {syncing ? "Sincronizando…" : "Sincronizar Pasta"}
           </Button>
+
+          <Link href="/dashboard/settings">
+            <Button variant="ghost" size="sm" className="gap-1.5">
+              <GearSix size={16} />
+              Configurar Autopilot
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -332,7 +411,7 @@ export default function ReelsLibraryPage() {
                     Pasta atual: <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-foreground">{folderId}</code>
                   </span>
                 ) : (
-                  "Nenhuma pasta configurada ainda. Insira o link ou ID da pasta abaixo para importar seus vídeos."
+                  "Nenhuma pasta configurada. Você pode colar o link da pasta abaixo ou adicionar vídeos colando os links diretos acima."
                 )}
               </p>
             </div>
@@ -343,7 +422,7 @@ export default function ReelsLibraryPage() {
               type="text"
               value={inputFolderId}
               onChange={(e) => setInputFolderId(e.target.value)}
-              placeholder="Cole o link ou ID da pasta do Drive"
+              placeholder="Link ou ID da pasta do Google Drive"
               className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-xs outline-none focus:border-primary sm:w-72"
             />
             <Button
@@ -355,6 +434,70 @@ export default function ReelsLibraryPage() {
               {syncing ? "Sincronizando…" : "Sincronizar"}
             </Button>
           </div>
+        </div>
+
+        {/* Quick helper for Apps Script Bridge */}
+        <div className="mt-3 border-t border-border pt-3">
+          <button
+            type="button"
+            onClick={() => setShowScriptHelp(!showScriptHelp)}
+            className="flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+          >
+            <Code size={14} />
+            <span>
+              {showScriptHelp
+                ? "Ocultar instruções de sincronização automática via Google Apps Script"
+                : "💡 Quer sincronização 100% automática da pasta sem restrições de API Key? Veja como (1 minuto, gratuito)"}
+            </span>
+            {showScriptHelp ? <CaretUp size={12} /> : <CaretDown size={12} />}
+          </button>
+
+          {showScriptHelp && (
+            <div className="mt-3 rounded-xl border border-border bg-surface-2/60 p-3.5 text-xs text-muted-foreground space-y-2">
+              <p className="font-semibold text-foreground">
+                Por que o Google Drive rejeita buscas de pastas com API Key?
+              </p>
+              <p>
+                O Google Drive bloqueou a listagem de pastas por chave de API simples (exige OAuth2 de usuário ou Service Account).
+                A forma mais fácil e sem burocracia de contornar isso para ler pastas inteiras é criando um <strong>Google Apps Script Web App</strong> em sua conta Google:
+              </p>
+              <ol className="list-decimal list-inside space-y-1 pl-1">
+                <li>
+                  Acesse <a href="https://script.google.com/home/start" target="_blank" rel="noopener noreferrer" className="text-primary underline">script.google.com</a> e clique em <strong>+ Novo projeto</strong>.
+                </li>
+                <li>
+                  Cole o código abaixo substituindo o conteúdo padrão:
+                </li>
+              </ol>
+
+              <div className="relative rounded-lg bg-background p-2.5 font-mono text-[11px] text-foreground border border-border">
+                <button
+                  type="button"
+                  onClick={copyScriptCode}
+                  className="absolute right-2 top-2 rounded bg-surface px-2 py-1 text-[11px] text-primary hover:bg-border flex items-center gap-1"
+                >
+                  {copiedCode ? <Check size={12} /> : <Copy size={12} />}
+                  {copiedCode ? "Copiado!" : "Copiar Código"}
+                </button>
+                <pre className="overflow-x-auto pr-24 whitespace-pre-wrap">{APPS_SCRIPT_CODE}</pre>
+              </div>
+
+              <ol start={3} className="list-decimal list-inside space-y-1 pl-1">
+                <li>
+                  No topo, clique em <strong>Implantar &gt; Nova implantação</strong>.
+                </li>
+                <li>
+                  Em <em>Tipo de implantação</em> (ícone de engrenagem), selecione <strong>App da Web</strong>.
+                </li>
+                <li>
+                  Em <em>Executar como</em> selecione <strong>Eu</strong>, e em <em>Quem pode acessar</em> selecione <strong>Qualquer pessoa</strong>. Clique em <strong>Implantar</strong>.
+                </li>
+                <li>
+                  Copie o link do App da Web (termina em <code>/exec</code>) e cole no campo de pasta acima ou em Configurações! O bot usará essa ponte para puxar todos os vídeos da sua pasta automaticamente.
+                </li>
+              </ol>
+            </div>
+          )}
         </div>
 
         {/* Autopilot Status Strip */}
@@ -446,14 +589,16 @@ export default function ReelsLibraryPage() {
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
             {videos.length === 0
-              ? "Sua biblioteca está vazia. Conecte sua pasta do Google Drive acima para sincronizar seus vídeos."
+              ? "Sua biblioteca está vazia. Adicione os links dos seus vídeos acima para começar a publicar."
               : "Nenhum vídeo corresponde ao filtro ou busca selecionada."}
           </p>
           {videos.length === 0 && (
-            <Button size="sm" onClick={handleSync} disabled={syncing} className="mt-4 gap-1.5">
-              <ArrowsClockwise size={15} />
-              Sincronizar Agora
-            </Button>
+            <div className="mt-4 flex items-center justify-center gap-2">
+              <Button size="sm" onClick={() => setLinksModalOpen(true)} className="gap-1.5">
+                <Plus size={15} />
+                Adicionar Vídeos (Colar Links)
+              </Button>
+            </div>
           )}
         </Card>
       ) : (
@@ -603,6 +748,69 @@ export default function ReelsLibraryPage() {
         </div>
       )}
 
+      {/* Modal Importar Links */}
+      {linksModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl rounded-2xl border border-border bg-surface p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <LinkSimple size={20} className="text-primary" />
+                <h3 className="font-heading text-base font-bold text-foreground">
+                  Adicionar Vídeos (Colar Links)
+                </h3>
+              </div>
+              <button
+                onClick={() => setLinksModalOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Cole os links de compartilhamento dos seus vídeos do Google Drive abaixo. Você pode colar <strong>vários links de uma vez</strong> (um por linha). Se desejar, pode incluir o título desejado após o link na mesma linha.
+            </p>
+
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">
+                Links dos Vídeos
+              </label>
+              <textarea
+                rows={6}
+                value={linksInput}
+                onChange={(e) => setLinksInput(e.target.value)}
+                placeholder={`https://drive.google.com/file/d/1ABC123xyz.../view?usp=sharing\nhttps://drive.google.com/file/d/2DEF456uvw.../view Aula 02 - Dicas de Marketing\nhttps://drive.google.com/file/d/3GHI789rst.../view`}
+                className="mt-1 w-full rounded-xl border border-border bg-background p-3 font-mono text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                autoFocus
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Dica: Certifique-se de que os vídeos estejam com acesso &ldquo;Qualquer pessoa com o link pode ver&rdquo; no Google Drive.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setLinksModalOpen(false)}
+                disabled={importingLinks}
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleImportLinks}
+                disabled={importingLinks || !linksInput.trim()}
+                className="gap-1.5"
+              >
+                <Plus size={15} />
+                {importingLinks ? "Importando…" : "Importar Vídeos para a Biblioteca"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Title Editor Modal */}
       {editingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
@@ -667,7 +875,7 @@ export default function ReelsLibraryPage() {
               1. <strong>Gere seus vídeos:</strong> Salve os vídeos gerados no Google Flow ou seu editor na pasta compartilhada do seu Google Drive.
             </p>
             <p>
-              2. <strong>Sincronização sem custo:</strong> O bot identifica arquivos novos e adiciona à biblioteca. Os vídeos NÃO ocupam o armazenamento do seu Supabase, pois são transmitidos diretamente do Google Drive para o Facebook via link de streaming seguro.
+              2. <strong>Importação sem esforço:</strong> Cole os links de compartilhamento pelo botão <em>&ldquo;Adicionar Vídeos (Colar Links)&rdquo;</em> ou use o Google Apps Script para sincronização de pastas. Os vídeos NÃO ocupam o armazenamento do Supabase, pois são transmitidos diretamente do Google Drive para o Facebook via link de streaming seguro.
             </p>
             <p>
               3. <strong>Copywriting Inteligente:</strong> Ao publicar, o bot lê o assunto do vídeo e aciona o Gemini 3.6-Flash para criar uma copy persuasiva de alta conversão para o formato Reels.

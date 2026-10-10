@@ -74,6 +74,91 @@ export function cleanFilenameToTopic(filename: string): string {
   return name || filename;
 }
 
+export interface ParsedVideoLink {
+  id: string;
+  title?: string;
+  originalInput: string;
+}
+
+/**
+ * Parses user-provided text containing Google Drive video links.
+ * Accepts multiple links (one per line or separated by space/commas),
+ * optionally with a custom title on the same line.
+ */
+export function parseDriveVideoLinks(text: string): ParsedVideoLink[] {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const results: ParsedVideoLink[] = [];
+  const seenIds = new Set<string>();
+
+  for (const line of lines) {
+    const words = line.split(/\s+/);
+    let matchedId: string | null = null;
+    const customTitleWords: string[] = [];
+
+    for (let i = 0; i < words.length; i++) {
+      const id = extractDriveFileId(words[i]);
+      if (id && !matchedId) {
+        matchedId = id;
+      } else {
+        customTitleWords.push(words[i]);
+      }
+    }
+
+    if (matchedId && !seenIds.has(matchedId)) {
+      seenIds.add(matchedId);
+      const customTitle = customTitleWords.join(" ").trim();
+      results.push({
+        id: matchedId,
+        title: customTitle || undefined,
+        originalInput: line,
+      });
+    }
+  }
+
+  // Fallback: search regex for file IDs or URLs in case of unusual delimiters
+  if (results.length === 0) {
+    const urlMatches = text.match(/https?:\/\/[^\s"'<>]+/g) || [];
+    for (const url of urlMatches) {
+      const id = extractDriveFileId(url);
+      if (id && !seenIds.has(id)) {
+        seenIds.add(id);
+        results.push({
+          id,
+          originalInput: url,
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Attempts to retrieve public file metadata (name, size) via Google Drive API v3.
+ * Works with API Key when the file is shared as "Anyone with the link can view".
+ */
+export async function fetchDriveFileMetadata(
+  fileId: string,
+  apiKey?: string | null
+): Promise<{ id: string; name?: string; size?: number; mimeType?: string } | null> {
+  if (!apiKey) return null;
+  try {
+    const fields = encodeURIComponent("id,name,size,mimeType");
+    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?key=${apiKey}&fields=${fields}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        id: data.id,
+        name: data.name,
+        size: data.size ? parseInt(data.size, 10) : undefined,
+        mimeType: data.mimeType,
+      };
+    }
+  } catch {}
+  return null;
+}
+
 export interface DriveFolderFile {
   id: string;
   name: string;
@@ -82,16 +167,62 @@ export interface DriveFolderFile {
 }
 
 /**
- * Lists video files in a Google Drive folder using Google Drive API v3.
+ * Lists video files using a Google Apps Script Web App.
+ * Free, requires zero Google Cloud OAuth verification, and bypasses Google's API key restriction.
+ */
+export async function listDriveFolderViaAppsScript(
+  scriptUrl: string,
+  folderId?: string
+): Promise<DriveFolderFile[]> {
+  const url = new URL(scriptUrl.trim());
+  if (folderId) {
+    url.searchParams.set("folderId", extractDriveFolderId(folderId));
+  }
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    signal: AbortSignal.timeout(15000),
+    redirect: "follow",
+  });
+  if (!res.ok) {
+    throw new Error(`Google Apps Script retornou erro (${res.status}): ${await res.text().catch(() => "")}`);
+  }
+  const data = await res.json();
+  if (data?.error) {
+    throw new Error(`Erro do Google Apps Script: ${data.error}`);
+  }
+  const rawFiles: Array<{ id: string; name: string; mimeType?: string; size?: string | number }> =
+    data?.files || (Array.isArray(data) ? data : []);
+
+  return rawFiles.map((f) => ({
+    id: f.id,
+    name: f.name || `Vídeo ${f.id.slice(0, 6)}`,
+    size: f.size ? Number(f.size) : undefined,
+    mimeType: f.mimeType,
+  }));
+}
+
+/**
+ * Lists video files in a Google Drive folder using Google Drive API v3 or Apps Script.
  * Folder must have "Anyone with the link can view" permissions.
  */
 export async function listDriveFolderVideos(
-  folderId: string,
-  apiKey: string
+  folderInput: string,
+  apiKey?: string
 ): Promise<DriveFolderFile[]> {
-  const cleanId = extractDriveFolderId(folderId);
+  const trimmed = folderInput.trim();
+
+  // If user provided a Google Apps Script Web App URL
+  if (trimmed.includes("script.google.com/macros/s/")) {
+    return listDriveFolderViaAppsScript(trimmed);
+  }
+
+  const cleanId = extractDriveFolderId(trimmed);
   if (!cleanId) throw new Error("ID da pasta do Google Drive não informado ou inválido.");
-  if (!apiKey) throw new Error("Chave de API do Google necessária para listar a pasta.");
+  if (!apiKey) {
+    throw new Error(
+      "Chave de API do Google não configurada. Salve uma chave nas Configurações ou adicione os vídeos colando os links diretamente."
+    );
+  }
 
   // Query: parent is folderId and not in trash
   const query = encodeURIComponent(`'${cleanId}' in parents and trashed = false`);
@@ -110,6 +241,13 @@ export async function listDriveFolderVideos(
       const parsed = JSON.parse(errText);
       cleanErr = parsed?.error?.message || errText;
     } catch {}
+
+    if (res.status === 401 && /API keys are not supported/i.test(cleanErr)) {
+      throw new Error(
+        "O Google Drive bloqueou a leitura de pastas por chave de API (requer OAuth2 ou Service Account). Você pode adicionar seus vídeos clicando no botão 'Adicionar Vídeos (Colar Links)' ou usando a URL do Google Apps Script."
+      );
+    }
+
     throw new Error(`Google Drive API (${res.status}): ${cleanErr}`);
   }
 
