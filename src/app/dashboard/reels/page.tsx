@@ -32,26 +32,40 @@ import type { VideoLibraryItem, VideoLibraryStatus } from "@/lib/types";
 
 type FilterTab = "all" | "pending" | "published" | "failed";
 
-const APPS_SCRIPT_CODE = `function doGet(e) {
-  var folderId = e.parameter.folderId;
-  if (!folderId) {
-    return ContentService.createTextOutput(JSON.stringify({ error: "Missing folderId parameter" }))
+const APPS_SCRIPT_CODE = `// 1. Cole aqui o ID ou link da sua pasta do Google Drive (ou passe ?folderId= na URL)
+var FOLDER_ID = ""; // Exemplo: "1a2B3c4D5e..." ou link completo da pasta
+
+function doGet(e) {
+  var folderParam = (e && e.parameter && (e.parameter.folderId || e.parameter.id)) || FOLDER_ID;
+  if (!folderParam) {
+    return ContentService.createTextOutput(JSON.stringify({ 
+      error: "Informe o ID da pasta na variavel FOLDER_ID no topo do script ou adicione ?folderId=SEU_ID no final da URL." 
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // Extrai o ID caso seja um link completo do Drive
+  var match = folderParam.match(/\\/folders\\/([a-zA-Z0-9_-]+)/);
+  var folderId = match ? match[1] : folderParam.trim();
+
+  try {
+    var folder = DriveApp.getFolderById(folderId);
+    var files = folder.getFiles();
+    var list = [];
+    while (files.hasNext()) {
+      var f = files.next();
+      var mime = f.getMimeType();
+      var name = f.getName();
+      if (mime.indexOf("video/") === 0 || /\\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(name)) {
+        list.push({ id: f.getId(), name: name, size: f.getSize(), mimeType: mime });
+      }
+    }
+    return ContentService.createTextOutput(JSON.stringify({ files: list }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ error: err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
   }
-  var folder = DriveApp.getFolderById(folderId);
-  var files = folder.getFiles();
-  var list = [];
-  while (files.hasNext()) {
-    var f = files.next();
-    var mime = f.getMimeType();
-    var name = f.getName();
-    if (mime.indexOf("video/") === 0 || /\\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(name)) {
-      list.push({ id: f.getId(), name: name, size: f.getSize(), mimeType: mime });
-    }
-  }
-  return ContentService.createTextOutput(JSON.stringify({ files: list }))
-    .setMimeType(ContentService.MimeType.JSON);
-}`;
+};
 
 export default function ReelsLibraryPage() {
   const [videos, setVideos] = useState<VideoLibraryItem[]>([]);
@@ -417,22 +431,31 @@ export default function ReelsLibraryPage() {
             </div>
           </div>
 
-          <div className="flex w-full items-center gap-2 sm:w-auto">
-            <input
-              type="text"
-              value={inputFolderId}
-              onChange={(e) => setInputFolderId(e.target.value)}
-              placeholder="Link ou ID da pasta do Google Drive"
-              className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-xs outline-none focus:border-primary sm:w-72"
-            />
-            <Button
-              size="sm"
-              onClick={handleSync}
-              disabled={syncing || !inputFolderId.trim()}
-              className="shrink-0"
-            >
-              {syncing ? "Sincronizando…" : "Sincronizar"}
-            </Button>
+          <div className="flex flex-col gap-1 w-full sm:w-auto">
+            <div className="flex w-full items-center gap-2">
+              <input
+                type="text"
+                value={inputFolderId}
+                onChange={(e) => setInputFolderId(e.target.value)}
+                placeholder="Link da pasta ou URL do Apps Script"
+                className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-xs outline-none focus:border-primary sm:w-80"
+              />
+              <Button
+                size="sm"
+                onClick={handleSync}
+                disabled={syncing || !inputFolderId.trim()}
+                className="shrink-0"
+              >
+                {syncing ? "Sincronizando…" : "Sincronizar"}
+              </Button>
+            </div>
+            {inputFolderId.includes("script.google.com/macros/s/") &&
+              !inputFolderId.includes("folderId=") &&
+              !inputFolderId.includes("id=") && (
+                <p className="text-[11px] text-amber-500">
+                  ⚠️ Adicione <code>?folderId=ID_OU_LINK_DA_PASTA</code> no final da URL para que o script saiba qual pasta ler!
+                </p>
+              )}
           </div>
         </div>
 
@@ -493,7 +516,7 @@ export default function ReelsLibraryPage() {
                   Em <em>Executar como</em> selecione <strong>Eu</strong>, e em <em>Quem pode acessar</em> selecione <strong>Qualquer pessoa</strong>. Clique em <strong>Implantar</strong>.
                 </li>
                 <li>
-                  Copie o link do App da Web (termina em <code>/exec</code>) e cole no campo de pasta acima ou em Configurações! O bot usará essa ponte para puxar todos os vídeos da sua pasta automaticamente.
+                  Copie o link gerado (termina em <code>/exec</code>) e cole no campo de pasta acima adicionando <code>?folderId=ID_DA_PASTA</code> no final (ex: <code>https://script.google.com/.../exec?folderId=1a2B3c...</code>) ou preencha <code>var FOLDER_ID = &quot;...&quot;</code> no topo do script.
                 </li>
               </ol>
             </div>

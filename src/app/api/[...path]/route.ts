@@ -506,7 +506,11 @@ export async function POST(req: Request, ctx: Ctx) {
       const { listDriveFolderVideos } = await import("@/lib/drive");
       const { syncDriveVideos } = await import("@/lib/db/videos");
       try {
-        const files = await listDriveFolderVideos(folderInput, apiKey || undefined);
+        const files = await listDriveFolderVideos(
+          folderInput,
+          apiKey || undefined,
+          settings.google_drive_folder_id || undefined
+        );
         const res = await syncDriveVideos(files);
         return json({ ok: true, found: files.length, ...res });
       } catch (err) {

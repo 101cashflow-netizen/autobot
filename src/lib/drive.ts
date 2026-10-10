@@ -175,9 +175,13 @@ export async function listDriveFolderViaAppsScript(
   folderId?: string
 ): Promise<DriveFolderFile[]> {
   const url = new URL(scriptUrl.trim());
-  if (folderId) {
+  const existingFolderId = url.searchParams.get("folderId") || url.searchParams.get("id");
+  if (existingFolderId) {
+    url.searchParams.set("folderId", extractDriveFolderId(existingFolderId));
+  } else if (folderId && !folderId.includes("script.google.com")) {
     url.searchParams.set("folderId", extractDriveFolderId(folderId));
   }
+
   const res = await fetch(url.toString(), {
     method: "GET",
     signal: AbortSignal.timeout(15000),
@@ -188,6 +192,11 @@ export async function listDriveFolderViaAppsScript(
   }
   const data = await res.json();
   if (data?.error) {
+    if (/Missing folderId parameter/i.test(data.error)) {
+      throw new Error(
+        "O Apps Script precisa saber qual pasta ler. Adicione ?folderId=ID_DA_PASTA no final da URL do Apps Script (ex: https://script.google.com/.../exec?folderId=1a2B3c...)."
+      );
+    }
     throw new Error(`Erro do Google Apps Script: ${data.error}`);
   }
   const rawFiles: Array<{ id: string; name: string; mimeType?: string; size?: string | number }> =
@@ -207,13 +216,14 @@ export async function listDriveFolderViaAppsScript(
  */
 export async function listDriveFolderVideos(
   folderInput: string,
-  apiKey?: string
+  apiKey?: string,
+  fallbackFolderId?: string
 ): Promise<DriveFolderFile[]> {
   const trimmed = folderInput.trim();
 
   // If user provided a Google Apps Script Web App URL
   if (trimmed.includes("script.google.com/macros/s/")) {
-    return listDriveFolderViaAppsScript(trimmed);
+    return listDriveFolderViaAppsScript(trimmed, fallbackFolderId);
   }
 
   const cleanId = extractDriveFolderId(trimmed);
