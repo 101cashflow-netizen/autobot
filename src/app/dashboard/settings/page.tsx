@@ -77,6 +77,7 @@ interface SettingsState {
   timezone: string;
   topic_source?: "mine" | "trending" | "mixed";
   google_drive_folder_id?: string;
+  google_apps_script_url?: string;
   google_drive_api_key_set?: boolean;
   reels_auto_post_enabled?: boolean;
   reels_posts_per_day?: number;
@@ -151,6 +152,7 @@ function SettingsForm() {
   const [imageAiKeysSaved, setImageAiKeysSaved] = useState(false);
 
   const [driveFolderId, setDriveFolderId] = useState("");
+  const [appsScriptUrl, setAppsScriptUrl] = useState("");
   const [driveApiKeyInput, setDriveApiKeyInput] = useState("");
   const [savingDrive, setSavingDrive] = useState(false);
   const [driveError, setDriveError] = useState<string | null>(null);
@@ -193,6 +195,7 @@ function SettingsForm() {
         setStockProvider(data.stock_provider ?? "any");
         setCfAccountIdInput(data.cloudflare_account_id ?? "");
         setDriveFolderId(data.google_drive_folder_id ?? "");
+        setAppsScriptUrl(data.google_apps_script_url ?? "");
         setReelsAutoPostEnabled(data.reels_auto_post_enabled === true);
         setReelsPostsPerDay(data.reels_posts_per_day || 1);
         setReelsPostingHours(data.reels_posting_hours || [11, 17]);
@@ -471,6 +474,7 @@ function SettingsForm() {
     try {
       const payload: Record<string, any> = {
         google_drive_folder_id: driveFolderId.trim(),
+        google_apps_script_url: appsScriptUrl.trim(),
         reels_auto_post_enabled: reelsAutoPostEnabled,
         reels_posts_per_day: Number(reelsPostsPerDay) || 1,
         reels_posting_hours: reelsPostingHours,
@@ -1559,11 +1563,27 @@ function SettingsForm() {
                   className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
                 />
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Certifique-se de que a pasta esteja com acesso &ldquo;Qualquer pessoa com o link pode ver&rdquo;.
+                  Cole o link ou ID da sua pasta do Google Drive.
                 </p>
               </div>
 
               <div>
+                <label className="text-xs font-semibold text-muted-foreground">
+                  URL do Google Apps Script (Web App)
+                </label>
+                <input
+                  type="text"
+                  value={appsScriptUrl}
+                  onChange={(e) => setAppsScriptUrl(e.target.value)}
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  O bot injeta o ID da pasta do Drive acima nesta URL automaticamente a cada sincronização.
+                </p>
+              </div>
+
+              <div className="sm:col-span-2">
                 <label className="text-xs font-semibold text-muted-foreground">
                   Chave API Google Drive (Opcional)
                 </label>
@@ -1579,7 +1599,7 @@ function SettingsForm() {
                   className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
                 />
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Necessária se a chave do Gemini não tiver a permissão Google Drive API v3 ativada.
+                  Utilizada caso não utilize o Google Apps Script e sua chave Gemini tenha permissão da Drive API v3.
                 </p>
               </div>
             </div>

@@ -71,6 +71,7 @@ export interface AppSettings {
   /** Google Drive and Reels Automation Settings */
   google_drive_folder_id?: string | null;
   google_drive_api_key?: string | null;
+  google_apps_script_url?: string | null;
   reels_auto_post_enabled?: boolean;
   reels_posts_per_day?: number;
   reels_posting_hours?: number[];

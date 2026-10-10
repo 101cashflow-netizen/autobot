@@ -70,6 +70,7 @@ function doGet(e) {
 export default function ReelsLibraryPage() {
   const [videos, setVideos] = useState<VideoLibraryItem[]>([]);
   const [folderId, setFolderId] = useState<string | null>(null);
+  const [appsScriptUrl, setAppsScriptUrl] = useState<string | null>(null);
   const [autoPostEnabled, setAutoPostEnabled] = useState(false);
   const [postsPerDay, setPostsPerDay] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -98,6 +99,14 @@ export default function ReelsLibraryPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
+  const cleanDisplayFolderId = useMemo(() => {
+    if (!folderId) return null;
+    const match = folderId.match(/[?&]folderId=([a-zA-Z0-9_-]+)/i) || folderId.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+    if (match) return match[1];
+    if (!folderId.includes("script.google.com")) return folderId;
+    return null;
+  }, [folderId]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -107,6 +116,7 @@ export default function ReelsLibraryPage() {
       if (!res.ok) throw new Error(data.error ?? "Falha ao carregar biblioteca de vídeos.");
       setVideos(data.videos ?? []);
       setFolderId(data.folder_id ?? null);
+      setAppsScriptUrl(data.apps_script_url ?? null);
       setAutoPostEnabled(data.auto_post_enabled === true);
       setPostsPerDay(data.posts_per_day || 1);
       if (data.folder_id && !inputFolderId) {
@@ -419,15 +429,35 @@ export default function ReelsLibraryPage() {
               <h3 className="font-heading text-sm font-semibold text-foreground">
                 Pasta Sincronizada do Google Drive
               </h3>
-              <p className="text-xs text-muted-foreground">
-                {folderId ? (
+              <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2 mt-0.5">
+                {cleanDisplayFolderId ? (
+                  <span className="flex items-center gap-1.5">
+                    Pasta: <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-foreground">{cleanDisplayFolderId}</code>
+                    <a
+                      href={`https://drive.google.com/drive/folders/${cleanDisplayFolderId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline inline-flex items-center gap-0.5"
+                    >
+                      Abrir no Drive
+                      <ArrowSquareOut size={12} />
+                    </a>
+                  </span>
+                ) : folderId ? (
                   <span>
-                    Pasta atual: <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-foreground">{folderId}</code>
+                    Pasta atual: <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-foreground text-[11px] truncate max-w-[280px] inline-block align-middle">{folderId}</code>
                   </span>
                 ) : (
-                  "Nenhuma pasta configurada. Você pode colar o link da pasta abaixo ou adicionar vídeos colando os links diretos acima."
+                  <span>Nenhuma pasta configurada. Você pode colar o link da pasta abaixo ou em Configurações.</span>
                 )}
-              </p>
+
+                {(appsScriptUrl || (folderId && folderId.includes("script.google.com"))) && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                    <Check size={11} />
+                    Ponte Apps Script Ativa
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -437,13 +467,13 @@ export default function ReelsLibraryPage() {
                 type="text"
                 value={inputFolderId}
                 onChange={(e) => setInputFolderId(e.target.value)}
-                placeholder="Link da pasta ou URL do Apps Script"
+                placeholder={folderId ? "Digite para trocar de pasta (ou vazio para usar a atual)" : "Link da pasta do Google Drive"}
                 className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-xs outline-none focus:border-primary sm:w-80"
               />
               <Button
                 size="sm"
                 onClick={handleSync}
-                disabled={syncing || !inputFolderId.trim()}
+                disabled={syncing || (!inputFolderId.trim() && !folderId && !appsScriptUrl)}
                 className="shrink-0"
               >
                 {syncing ? "Sincronizando…" : "Sincronizar"}

@@ -174,6 +174,7 @@ create index if not exists video_library_created_idx on video_library (created_a
 
 alter table app_settings add column if not exists google_drive_folder_id text;
 alter table app_settings add column if not exists google_drive_api_key text;
+alter table app_settings add column if not exists google_apps_script_url text;
 alter table app_settings add column if not exists reels_auto_post_enabled boolean not null default false;
 alter table app_settings add column if not exists reels_posts_per_day smallint not null default 1;
 alter table app_settings add column if not exists reels_posting_hours int[] not null default '{11,17}';

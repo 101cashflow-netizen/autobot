@@ -164,6 +164,7 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
   return {
     ...safe,
     google_drive_folder_id: settings.google_drive_folder_id || "",
+    google_apps_script_url: settings.google_apps_script_url || "",
     google_drive_api_key_set: Boolean(google_drive_api_key && google_drive_api_key.trim()),
     reels_auto_post_enabled: settings.reels_auto_post_enabled === true,
     reels_posts_per_day: settings.reels_posts_per_day || 1,
@@ -237,6 +238,7 @@ export async function GET(req: Request, ctx: Ctx) {
       return json({
         videos,
         folder_id: settings.google_drive_folder_id || null,
+        apps_script_url: settings.google_apps_script_url || null,
         auto_post_enabled: settings.reels_auto_post_enabled === true,
         posts_per_day: settings.reels_posts_per_day || 1,
       });
@@ -497,8 +499,10 @@ export async function POST(req: Request, ctx: Ctx) {
       const settings = await getSettings();
       const body = await req.json().catch(() => ({}));
       const folderInput = (body?.folderId || settings.google_drive_folder_id || "").trim();
-      if (!folderInput) {
-        return json({ error: "Informe o link ou ID da pasta do Google Drive." }, 400);
+      const appsScriptUrl = (body?.appsScriptUrl || settings.google_apps_script_url || "").trim();
+
+      if (!folderInput && !appsScriptUrl) {
+        return json({ error: "Informe o link ou ID da pasta do Google Drive nas Configurações." }, 400);
       }
       const { getEffectiveGeminiApiKey } = await import("@/lib/ai/gemini-key");
       const apiKey = (settings.google_drive_api_key || (await getEffectiveGeminiApiKey()) || "").trim();
@@ -507,9 +511,9 @@ export async function POST(req: Request, ctx: Ctx) {
       const { syncDriveVideos } = await import("@/lib/db/videos");
       try {
         const files = await listDriveFolderVideos(
-          folderInput,
+          folderInput || appsScriptUrl,
           apiKey || undefined,
-          settings.google_drive_folder_id || undefined
+          appsScriptUrl || undefined
         );
         const res = await syncDriveVideos(files);
         return json({ ok: true, found: files.length, ...res });
@@ -635,6 +639,7 @@ const SettingsBody = z.object({
   topic_source: z.enum(["mine", "trending", "mixed"]).optional(),
   google_drive_folder_id: z.string().trim().optional(),
   google_drive_api_key: z.string().trim().optional(),
+  google_apps_script_url: z.string().trim().optional(),
   reels_auto_post_enabled: z.boolean().optional(),
   reels_posts_per_day: z.number().int().min(1).max(20).optional(),
   reels_posting_hours: z.array(z.number().int().min(0).max(23)).min(1).max(24).optional(),

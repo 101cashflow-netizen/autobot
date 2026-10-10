@@ -10,8 +10,8 @@ export function extractDriveFolderId(input: string): string {
   const folderMatch = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/);
   if (folderMatch) return folderMatch[1];
 
-  // Check for ?id=<id> or &id=<id>
-  const paramMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  // Check for ?folderId=<id>, &folderId=<id>, ?id=<id>, &id=<id>
+  const paramMatch = trimmed.match(/[?&](?:folderId|id)=([a-zA-Z0-9_-]+)/i);
   if (paramMatch) return paramMatch[1];
 
   // If input is already an ID (alphanumeric and dashes/underscores, usually 25+ chars)
@@ -217,20 +217,30 @@ export async function listDriveFolderViaAppsScript(
 export async function listDriveFolderVideos(
   folderInput: string,
   apiKey?: string,
-  fallbackFolderId?: string
+  appsScriptUrl?: string
 ): Promise<DriveFolderFile[]> {
-  const trimmed = folderInput.trim();
+  const trimmedFolder = folderInput.trim();
+  const trimmedScript = (appsScriptUrl || "").trim();
 
-  // If user provided a Google Apps Script Web App URL
-  if (trimmed.includes("script.google.com/macros/s/")) {
-    return listDriveFolderViaAppsScript(trimmed, fallbackFolderId);
+  // If a Google Apps Script URL is configured or provided
+  const activeScriptUrl = trimmedScript.includes("script.google.com/macros/s/")
+    ? trimmedScript
+    : trimmedFolder.includes("script.google.com/macros/s/")
+      ? trimmedFolder
+      : null;
+
+  if (activeScriptUrl) {
+    const targetFolderId = !trimmedFolder.includes("script.google.com/macros/s/")
+      ? trimmedFolder
+      : undefined;
+    return listDriveFolderViaAppsScript(activeScriptUrl, targetFolderId);
   }
 
-  const cleanId = extractDriveFolderId(trimmed);
+  const cleanId = extractDriveFolderId(trimmedFolder);
   if (!cleanId) throw new Error("ID da pasta do Google Drive não informado ou inválido.");
   if (!apiKey) {
     throw new Error(
-      "Chave de API do Google não configurada. Salve uma chave nas Configurações ou adicione os vídeos colando os links diretamente."
+      "Chave de API do Google não configurada. Configure o Google Apps Script ou salve uma chave de API nas Configurações."
     );
   }
 
