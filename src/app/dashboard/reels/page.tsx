@@ -65,7 +65,8 @@ function doGet(e) {
     return ContentService.createTextOutput(JSON.stringify({ error: err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
   }
-};
+}
+`;
 
 export default function ReelsLibraryPage() {
   const [videos, setVideos] = useState<VideoLibraryItem[]>([]);
