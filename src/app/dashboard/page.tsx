@@ -151,6 +151,25 @@ export default async function DashboardOverviewPage() {
         </Card>
       )}
 
+      {failed.length > 0 && (
+        <Card className="flex flex-col items-start justify-between gap-3 border-destructive/30 bg-destructive/5 sm:flex-row sm:items-center">
+          <div>
+            <p className="font-semibold text-destructive flex items-center gap-1.5">
+              <WarningCircle size={18} weight="fill" />
+              {failed.length} post(s) falharam na publicação automática
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              O robô gerou posts que apresentaram erro ao publicar no Facebook. Você pode visualizá-los, ler os detalhes do erro e reagendar na Fila.
+            </p>
+          </div>
+          <Link href="/dashboard/queue">
+            <Button size="sm" variant="secondary" className="border-destructive/30 text-destructive hover:bg-destructive/10">
+              Ver e Reagendar <ArrowRight size={14} />
+            </Button>
+          </Link>
+        </Card>
+      )}
+
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Total Publicados" value={posted.length} icon={MegaphoneSimple} tone="primary" />
         <StatCard label="Esta Semana" value={postedThisWeek.length} icon={CalendarCheck} tone="success" />

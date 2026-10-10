@@ -12,23 +12,34 @@ import {
   ArrowsClockwise,
   ArrowSquareOut,
   Info,
+  WarningCircle,
+  Eye,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/badge";
+import { PostDetailModal } from "@/components/dashboard/post-detail-modal";
+import { cn } from "@/lib/cn";
 import { facebookPostUrl } from "@/lib/types";
 import type { Post } from "@/lib/types";
 
 function toLocalInputValue(iso: string | null) {
-  if (!iso) return "";
+  if (!iso) {
+    const d = new Date(Date.now() + 60 * 60 * 1000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+type QueueTab = "all" | "failed" | "scheduled" | "draft";
+
 export default function QueuePage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<QueueTab>("all");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTime, setDraftTime] = useState("");
@@ -37,11 +48,15 @@ export default function QueuePage() {
   const [dispatching, setDispatching] = useState(false);
   const [cronMessage, setCronMessage] = useState<string | null>(null);
 
+  // Modal State
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/posts?status=draft,scheduled");
+      const res = await fetch("/api/posts?status=draft,scheduled,failed");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Falha ao carregar a fila de posts.");
       setPosts(data.posts ?? []);
@@ -60,6 +75,16 @@ export default function QueuePage() {
   const duePosts = posts.filter(
     (p) => p.status === "scheduled" && p.scheduled_at && new Date(p.scheduled_at) <= now
   );
+  const failedPosts = posts.filter((p) => p.status === "failed");
+  const scheduledPosts = posts.filter((p) => p.status === "scheduled");
+  const draftPosts = posts.filter((p) => p.status === "draft");
+
+  const displayedPosts = posts.filter((p) => {
+    if (tab === "failed") return p.status === "failed";
+    if (tab === "scheduled") return p.status === "scheduled";
+    if (tab === "draft") return p.status === "draft";
+    return true;
+  });
 
   async function triggerQueue() {
     setDispatching(true);
@@ -95,6 +120,7 @@ export default function QueuePage() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao publicar.");
+      throw err;
     } finally {
       setBusyId(null);
     }
@@ -110,16 +136,17 @@ export default function QueuePage() {
     }
   }
 
-  async function saveSchedule(id: string) {
+  async function saveSchedule(id: string, customTimeIso?: string) {
     setBusyId(id);
     setError(null);
     try {
+      const timeIso = customTimeIso || (draftTime ? new Date(draftTime).toISOString() : null);
       const res = await fetch(`/api/posts/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          scheduledAt: draftTime ? new Date(draftTime).toISOString() : null,
-          status: draftTime ? "scheduled" : "draft",
+          scheduledAt: timeIso,
+          status: timeIso ? "scheduled" : "draft",
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
@@ -127,6 +154,7 @@ export default function QueuePage() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao atualizar agendamento.");
+      throw err;
     } finally {
       setBusyId(null);
     }
@@ -139,7 +167,7 @@ export default function QueuePage() {
         <div>
           <h1 className="font-heading text-xl font-bold text-foreground">Fila &amp; Agendados</h1>
           <p className="text-xs text-muted-foreground">
-            Gerencie rascunhos e posts agendados para publicação na sua Página.
+            Gerencie posts agendados, rascunhos e posts automáticos com falha na publicação.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -158,42 +186,129 @@ export default function QueuePage() {
             onClick={triggerQueue}
             disabled={dispatching || loading}
             className="bg-amber-600 hover:bg-amber-700 text-white"
+            title="Executa imediatamente a fila para publicar posts cujo horário já passou"
           >
-            <Lightning size={16} weight="fill" className={dispatching ? "animate-pulse" : ""} />
-            {dispatching ? "Publicando..." : "Disparar Posts Vencidos"}
-            {duePosts.length > 0 && (
-              <span className="ml-1 rounded-full bg-white/20 px-1.5 py-0.2 text-[11px] font-bold">
-                {duePosts.length}
-              </span>
-            )}
+            <Lightning size={15} weight="fill" />
+            {dispatching ? "Disparando…" : "Disparar Posts Vencidos"}
           </Button>
         </div>
       </div>
 
-      {/* Explanatory banner */}
+      {/* Filter Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-2">
+        <button
+          onClick={() => setTab("all")}
+          className={cn(
+            "cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-medium transition",
+            tab === "all"
+              ? "bg-primary text-primary-foreground font-semibold"
+              : "border border-border text-muted-foreground hover:bg-surface-2"
+          )}
+        >
+          Todos ({posts.length})
+        </button>
+        <button
+          onClick={() => setTab("failed")}
+          className={cn(
+            "cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-medium transition flex items-center gap-1.5",
+            tab === "failed"
+              ? "bg-destructive text-destructive-foreground font-semibold"
+              : failedPosts.length > 0
+              ? "border border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 font-semibold"
+              : "border border-border text-muted-foreground hover:bg-surface-2"
+          )}
+        >
+          {failedPosts.length > 0 && <WarningCircle size={14} weight="fill" />}
+          Falharam ({failedPosts.length})
+        </button>
+        <button
+          onClick={() => setTab("scheduled")}
+          className={cn(
+            "cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-medium transition",
+            tab === "scheduled"
+              ? "bg-primary text-primary-foreground font-semibold"
+              : "border border-border text-muted-foreground hover:bg-surface-2"
+          )}
+        >
+          Agendados ({scheduledPosts.length})
+        </button>
+        <button
+          onClick={() => setTab("draft")}
+          className={cn(
+            "cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-medium transition",
+            tab === "draft"
+              ? "bg-primary text-primary-foreground font-semibold"
+              : "border border-border text-muted-foreground hover:bg-surface-2"
+          )}
+        >
+          Rascunhos ({draftPosts.length})
+        </button>
+      </div>
+
+      {/* Alert Banner for Failed Posts */}
+      {failedPosts.length > 0 && (
+        <div className="flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/10 p-3.5 text-xs text-destructive">
+          <WarningCircle size={18} weight="fill" className="shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <span className="font-semibold">
+              Existem {failedPosts.length} post(s) que falharam ao tentar publicar no Facebook!
+            </span>
+            <p className="mt-0.5 text-foreground/80 leading-relaxed">
+              Esses posts foram gerados pelo robô automático ou estavam na fila agendada. Você pode visualizá-los na íntegra,
+              verificar o erro retornado pela Meta e <strong>reagendar</strong> ou <strong>tentar publicar agora</strong>.
+            </p>
+          </div>
+          {tab !== "failed" && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setTab("failed")}
+              className="shrink-0 border-destructive/30 text-destructive hover:bg-destructive/20"
+            >
+              Ver Falhas ({failedPosts.length})
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Overdue Notification Banner */}
+      {duePosts.length > 0 && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-900 dark:text-amber-200">
+          <Info size={18} className="shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <span className="font-semibold">
+              Existem {duePosts.length} post(s) agendado(s) com horário já vencido.
+            </span>{" "}
+            Clique no botão <strong>&quot;Disparar Posts Vencidos&quot;</strong> acima para publicá-los agora mesmo no Facebook.
+          </div>
+        </div>
+      )}
+
+      {/* Cron Instruction Banner */}
       <div className="flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3.5 text-xs text-foreground/90">
-        <Info size={20} className="mt-0.5 shrink-0 text-primary" weight="fill" />
+        <Info size={18} className="shrink-0 text-primary mt-0.5" />
         <div className="space-y-1">
-          <p className="font-semibold text-primary">Como funciona o agendamento?</p>
+          <p className="font-semibold text-foreground">Como funciona o disparo automático da fila:</p>
           <p className="text-muted-foreground leading-relaxed">
-            Seus posts agendados ficam guardados nesta fila até a data/hora programada. No Cloudflare Pages, para que a publicação seja feita 100% no piloto automático sem precisar manter o painel aberto, basta cadastrar um serviço gratuito de cron (ex:{" "}
+            Seus posts agendados são publicados automaticamente no horário configurado através da rota de cron.
+            Para disparo de alta frequência (a cada 10 ou 15 min), aponte um cron gratuito (ex:{" "}
             <a
               href="https://cron-job.org"
               target="_blank"
               rel="noopener noreferrer"
-              className="font-medium text-primary underline underline-offset-2"
+              className="font-semibold underline"
             >
-              cron-job.org ↗
+              cron-job.org
             </a>
-            ) apontando para a URL{" "}
-            <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-[11px] text-foreground">
-              https://autobot-5sq.pages.dev/api/cron/process-queue
-            </code>{" "}
-            a cada 10 ou 15 minutos. Você também pode disparar os posts vencidos a qualquer momento pelo botão acima.
+            ) para:
           </p>
+          <code className="block rounded-lg bg-surface-2 px-2.5 py-1 font-mono text-[11px] text-foreground border border-border/60">
+            https://autobot-5sq.pages.dev/api/cron/process-queue
+          </code>
         </div>
       </div>
 
+      {/* Notifications */}
       {error && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 text-sm text-destructive">
           {error}
@@ -208,7 +323,7 @@ export default function QueuePage() {
 
       {publishedUrl && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-success/30 bg-success/10 p-3.5 text-sm text-success">
-          Publicado no Facebook com sucesso 🎉
+          <span>Post publicado com sucesso!</span>
           <a
             href={publishedUrl}
             target="_blank"
@@ -220,27 +335,46 @@ export default function QueuePage() {
         </div>
       )}
 
+      {/* Posts List */}
       {!error && (
         <Card>
           {loading ? (
             <p className="py-10 text-center text-sm text-muted-foreground">Carregando fila…</p>
-          ) : posts.length === 0 ? (
+          ) : displayedPosts.length === 0 ? (
             <div className="py-12 text-center space-y-2">
-              <p className="font-semibold text-foreground">Nenhum post na fila</p>
+              <p className="font-semibold text-foreground">
+                {tab === "failed"
+                  ? "Nenhum post com falha no momento!"
+                  : tab === "scheduled"
+                  ? "Nenhum post agendado na fila"
+                  : tab === "draft"
+                  ? "Nenhum rascunho salvo"
+                  : "Nenhum post na fila"}
+              </p>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                Crie um post na tela <strong>Criar Post</strong> e clique em &quot;Agendar&quot; ou &quot;Salvar rascunho&quot; para vê-lo aqui.
+                {tab === "failed"
+                  ? "Excelente! Todos os posts gerados pelo robô foram publicados com sucesso."
+                  : "Crie um post na tela Criar Post e clique em \"Agendar\" ou \"Salvar rascunho\" para vê-lo aqui."}
               </p>
             </div>
           ) : (
             <div className="divide-y divide-border">
-              {posts.map((post) => {
+              {displayedPosts.map((post) => {
                 const isOverdue =
                   post.status === "scheduled" &&
                   post.scheduled_at &&
                   new Date(post.scheduled_at) <= now;
+                const isFailed = post.status === "failed";
 
                 return (
-                  <div key={post.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center">
+                  <div
+                    key={post.id}
+                    className={cn(
+                      "flex flex-col gap-3 py-4 sm:flex-row sm:items-center rounded-xl transition px-2",
+                      isFailed ? "bg-destructive/5 border border-destructive/20 my-1" : ""
+                    )}
+                  >
+                    {/* Media Thumbnail */}
                     {post.media_type === "video" ? (
                       <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-black">
                         <video
@@ -263,6 +397,7 @@ export default function QueuePage() {
                       <img src={post.image_url} alt="" className="h-16 w-16 shrink-0 rounded-xl object-cover" />
                     )}
 
+                    {/* Content Details */}
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="truncate font-medium text-foreground">{post.title}</p>
@@ -272,8 +407,24 @@ export default function QueuePage() {
                             Horário vencido
                           </span>
                         )}
+                        {isFailed && (
+                          <span className="rounded-full bg-destructive/20 px-2 py-0.5 text-[10px] font-bold text-destructive">
+                            Falhou no Facebook
+                          </span>
+                        )}
                       </div>
                       <p className="mt-0.5 truncate text-sm text-muted-foreground">{post.description}</p>
+
+                      {/* Error Preview for Failed Posts */}
+                      {isFailed && post.error_message && (
+                        <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                          <WarningCircle size={15} className="shrink-0 mt-0.5" />
+                          <span className="line-clamp-2">
+                            <strong>Erro da publicação:</strong> {post.error_message}
+                          </span>
+                        </div>
+                      )}
+
                       <p className="mt-1 text-xs text-muted-foreground">
                         Página: <strong>{post.page_name ?? "Padrão"}</strong>
                         {post.scheduled_at && (
@@ -291,8 +442,11 @@ export default function QueuePage() {
                             </strong>
                           </>
                         )}
+                        {" · "}
+                        Criado em: {new Date(post.created_at).toLocaleString("pt-BR")}
                       </p>
 
+                      {/* Inline Reschedule Form */}
                       {editingId === post.id && (
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <input
@@ -321,7 +475,20 @@ export default function QueuePage() {
                       )}
                     </div>
 
+                    {/* Action Buttons */}
                     <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setSelectedPost(post);
+                          setModalOpen(true);
+                        }}
+                        title="Visualizar post completo e detalhes"
+                      >
+                        <Eye size={14} /> Ver Post
+                      </Button>
+
                       <Button
                         size="sm"
                         variant="secondary"
@@ -329,12 +496,26 @@ export default function QueuePage() {
                           setEditingId(post.id);
                           setDraftTime(toLocalInputValue(post.scheduled_at));
                         }}
+                        title="Reagendar horário de publicação"
                       >
                         <PencilSimple size={14} /> Reagendar
                       </Button>
-                      <Button size="sm" onClick={() => postNow(post.id)} disabled={busyId === post.id}>
-                        <Rocket size={14} weight="fill" /> {busyId === post.id ? "Publicando…" : "Publicar agora"}
+
+                      <Button
+                        size="sm"
+                        onClick={() => postNow(post.id)}
+                        disabled={busyId === post.id}
+                        className={isFailed ? "bg-primary hover:bg-primary/90 text-primary-foreground font-semibold" : ""}
+                        title={isFailed ? "Tentar publicar novamente no Facebook" : "Publicar agora no Facebook"}
+                      >
+                        <Rocket size={14} weight="fill" />{" "}
+                        {busyId === post.id
+                          ? "Publicando…"
+                          : isFailed
+                          ? "Tentar Novamente"
+                          : "Publicar agora"}
                       </Button>
+
                       <Button
                         size="sm"
                         variant="ghost"
@@ -353,6 +534,19 @@ export default function QueuePage() {
           )}
         </Card>
       )}
+
+      {/* Post Detail Modal */}
+      <PostDetailModal
+        post={selectedPost}
+        isOpen={modalOpen}
+        onClose={() => {
+          setModalOpen(false);
+          setSelectedPost(null);
+        }}
+        onPostNow={postNow}
+        onReschedule={saveSchedule}
+        onDelete={remove}
+      />
     </div>
   );
 }

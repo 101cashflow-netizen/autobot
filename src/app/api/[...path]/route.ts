@@ -567,7 +567,7 @@ const UpdatePostBody = z.object({
   pageId: z.string().min(1).optional(),
   pageName: z.string().min(1).optional(),
   scheduledAt: z.string().datetime().nullable().optional(),
-  status: z.enum(["draft", "scheduled"]).optional(),
+  status: z.enum(["draft", "scheduled", "failed"]).optional(),
 });
 
 export async function PATCH(req: Request, ctx: Ctx) {
@@ -676,7 +676,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
         ...(b.pageId !== undefined && { page_id: b.pageId }),
         ...(b.pageName !== undefined && { page_name: b.pageName }),
         ...(b.scheduledAt !== undefined && { scheduled_at: b.scheduledAt }),
-        ...(b.status !== undefined && { status: b.status }),
+        ...(b.status !== undefined && {
+          status: b.status,
+          ...(b.status === "scheduled" || b.status === "draft" ? { error_message: null } : {}),
+        }),
       });
 
       return json({ post: updated });
