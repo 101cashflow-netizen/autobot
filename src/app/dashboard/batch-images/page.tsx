@@ -797,6 +797,15 @@ export default function BatchImagesLibraryPage() {
                         <Trash size={14} />
                       </button>
 
+                      <Link
+                        href={`/dashboard/generate?driveImageId=${item.id}&topic=${encodeURIComponent(item.title)}`}
+                        className="inline-flex items-center gap-1 h-7 rounded-xl border border-border bg-surface px-2 text-[11px] font-medium text-foreground hover:bg-surface-2 transition"
+                        title="Abrir em 'Criar Post' para gerar e revisar a copy antes de postar"
+                      >
+                        <Sparkle size={12} className="text-primary" />
+                        Criar Post
+                      </Link>
+
                       {item.status !== "published" && (
                         <Button
                           size="sm"

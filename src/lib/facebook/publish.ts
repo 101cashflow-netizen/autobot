@@ -49,11 +49,29 @@ export async function publishPostNow(postId: string): Promise<Post> {
         link: post.link_url || undefined,
       });
     } else {
+      let finalImageUrl = post.image_url;
+      if (
+        post.image_source === "drive" ||
+        post.image_url.includes("googleusercontent.com") ||
+        post.image_url.includes("drive.google.com")
+      ) {
+        try {
+          const { extractDriveFileId } = await import("@/lib/drive");
+          const { ensurePublicImageUrl } = await import("@/lib/facebook/images");
+          const fileId = extractDriveFileId(post.image_url);
+          if (fileId) {
+            finalImageUrl = await ensurePublicImageUrl(fileId, post.image_url);
+          }
+        } catch (e) {
+          console.warn("Could not ensure public storage URL for drive image:", e);
+        }
+      }
+
       result = await publishPhoto({
         pageId,
         pageToken,
         message: composeMessage(post, settings.utm_suffix),
-        imageUrl: post.image_url,
+        imageUrl: finalImageUrl,
       });
     }
 

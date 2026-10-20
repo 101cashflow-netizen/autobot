@@ -15,6 +15,9 @@ import {
   ArrowSquareOut,
   VideoCamera,
   Article,
+  Folder,
+  Images,
+  MagnifyingGlass,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +29,7 @@ import type {
   CopyLength,
   CopyTone,
   GeneratedContent,
+  ImageLibraryItem,
   ImageSource,
   ImageSourcePref,
   MediaType,
@@ -75,12 +79,55 @@ export default function GeneratePage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
 
+  // Google Drive synced images integration
+  const [imageOrigin, setImageOrigin] = useState<"ai_stock" | "drive">("ai_stock");
+  const [selectedDriveImage, setSelectedDriveImage] = useState<ImageLibraryItem | null>(null);
+  const [driveImages, setDriveImages] = useState<ImageLibraryItem[]>([]);
+  const [loadingDriveImages, setLoadingDriveImages] = useState(false);
+  const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  const [driveSearch, setDriveSearch] = useState("");
+
+  async function loadDriveImages() {
+    setLoadingDriveImages(true);
+    try {
+      const res = await fetch("/api/batch-images");
+      const data = await res.json();
+      setDriveImages(data.images ?? []);
+    } catch {} finally {
+      setLoadingDriveImages(false);
+    }
+  }
+
+  function handleSelectDriveImage(item: ImageLibraryItem) {
+    setSelectedDriveImage(item);
+    setTopic(item.title);
+    setImageOrigin("drive");
+    setMediaType("image");
+    setDrivePickerOpen(false);
+  }
+
   useEffect(() => {
     // Arriving from the Topics screen's "write now" link. Read directly rather
     // than through useSearchParams, which would force a Suspense boundary
     // around the whole form for one optional value.
     const fromLink = new URLSearchParams(window.location.search).get("topic");
     if (fromLink) setTopic(fromLink);
+
+    const driveImageId = new URLSearchParams(window.location.search).get("driveImageId");
+    if (driveImageId) {
+      fetch("/api/batch-images")
+        .then((r) => r.json())
+        .then((d) => {
+          const found = (d.images ?? []).find((i: ImageLibraryItem) => i.id === driveImageId);
+          if (found) {
+            setSelectedDriveImage(found);
+            setImageOrigin("drive");
+            setMediaType("image");
+            setTopic(found.title);
+          }
+        })
+        .catch(() => {});
+    }
 
     fetch("/api/topics")
       .then((r) => r.json())
@@ -194,6 +241,29 @@ export default function GeneratePage() {
         setVideo(videoData);
         setImage({ url: videoData.previewUrl || videoData.url, source: "stock" });
         setStep("ready");
+      } else if (mediaType === "image" && imageOrigin === "drive") {
+        if (!selectedDriveImage) {
+          setError("Selecione uma imagem da sua pasta sincronizada do Drive antes de gerar.");
+          setStep("idle");
+          return;
+        }
+
+        const contentRes = await fetch("/api/generate/content", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(copyPayload),
+        });
+
+        if (!contentRes.ok) throw new Error((await contentRes.json()).error ?? "Falha ao gerar o texto.");
+
+        const contentData: GeneratedContent = await contentRes.json();
+        setContent(contentData);
+        setImage({
+          url: selectedDriveImage.image_url,
+          source: "drive",
+        });
+        setVideo(null);
+        setStep("ready");
       } else {
         const [contentRes, imageRes] = await Promise.all([
           fetch("/api/generate/content", {
@@ -257,6 +327,13 @@ export default function GeneratePage() {
     setError(null);
     setRegeneratingMedia(true);
     try {
+      if (mediaType === "image" && imageOrigin === "drive") {
+        loadDriveImages();
+        setDrivePickerOpen(true);
+        setRegeneratingMedia(false);
+        return;
+      }
+
       if (mediaType === "video") {
         const res = await fetch("/api/generate/video", {
           method: "POST",
@@ -396,15 +473,37 @@ export default function GeneratePage() {
             <div className="inline-flex rounded-xl border border-border bg-surface-2 p-0.5">
               <button
                 type="button"
-                onClick={() => setMediaType("image")}
+                onClick={() => {
+                  setMediaType("image");
+                  setImageOrigin("ai_stock");
+                }}
                 className={cn(
                   "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition cursor-pointer",
-                  mediaType === "image"
+                  mediaType === "image" && imageOrigin === "ai_stock"
                     ? "bg-background text-foreground shadow-xs font-semibold"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <Sparkle size={14} /> Foto / Imagem
+                <Sparkle size={14} /> Imagem (IA / Stock)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMediaType("image");
+                  setImageOrigin("drive");
+                  loadDriveImages();
+                  if (!selectedDriveImage) {
+                    setDrivePickerOpen(true);
+                  }
+                }}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition cursor-pointer",
+                  mediaType === "image" && imageOrigin === "drive"
+                    ? "bg-background text-foreground shadow-xs font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Folder size={14} /> Imagem do Drive
               </button>
               <button
                 type="button"
@@ -416,7 +515,7 @@ export default function GeneratePage() {
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <VideoCamera size={14} /> Vídeo (Pexels / Pixabay)
+                <VideoCamera size={14} /> Vídeo
               </button>
               <button
                 type="button"
@@ -529,10 +628,73 @@ export default function GeneratePage() {
           </div>
         )}
 
-        {mediaType === "image" && avatarName && (
+        {mediaType === "image" && imageOrigin === "ai_stock" && avatarName && (
           <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-purple-500/10 px-2.5 py-1 text-xs font-medium text-purple-600 dark:text-purple-400">
             <span className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-pulse" />
             Avatar IA ativo: {avatarName} (consistência de personagem ligada)
+          </div>
+        )}
+
+        {mediaType === "image" && imageOrigin === "drive" && (
+          <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              {selectedDriveImage ? (
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border bg-black/10">
+                    <img
+                      src={`https://lh3.googleusercontent.com/d/${selectedDriveImage.drive_file_id}`}
+                      alt={selectedDriveImage.title}
+                      className="h-full w-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = `https://drive.google.com/uc?export=download&id=${selectedDriveImage.drive_file_id}`;
+                      }}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-foreground truncate">
+                        {selectedDriveImage.title}
+                      </span>
+                      <Badge className="text-[10px] py-0 px-1.5">Google Drive</Badge>
+                    </div>
+                    <p className="text-[11px] font-mono text-muted-foreground truncate">
+                      {selectedDriveImage.raw_filename}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Folder size={18} className="text-primary shrink-0" />
+                  <span>Nenhuma imagem selecionada da sua pasta sincronizada do Drive.</span>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    loadDriveImages();
+                    setDrivePickerOpen(true);
+                  }}
+                  className="text-xs h-8"
+                >
+                  <Images size={14} className="mr-1" />
+                  {selectedDriveImage ? "Trocar Imagem" : "Escolher Imagem do Drive"}
+                </Button>
+                {selectedDriveImage && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDriveImage(null)}
+                    className="p-1 text-muted-foreground hover:text-foreground text-xs"
+                    title="Remover seleção"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -560,11 +722,13 @@ export default function GeneratePage() {
                 ? "Ex: pessoa relaxando na praia ao pôr do sol..."
                 : mediaType === "text"
                   ? "Ex: pensamentos sobre disciplina e sucesso nos negócios..."
-                  : "e.g. cozy fall living room decor ideas"
+                  : imageOrigin === "drive"
+                    ? "Título ou tema da imagem selecionada do Drive..."
+                    : "e.g. cozy fall living room decor ideas"
             }
             className="flex-1 rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
           />
-          {mediaType === "image" && (
+          {mediaType === "image" && imageOrigin === "ai_stock" && (
             <select
               value={imagePref}
               onChange={(e) => setImagePref(e.target.value as ImageSourcePref)}
@@ -581,6 +745,8 @@ export default function GeneratePage() {
               <VideoCamera size={16} weight="fill" />
             ) : mediaType === "text" ? (
               <Article size={16} weight="fill" />
+            ) : imageOrigin === "drive" ? (
+              <Folder size={16} weight="fill" />
             ) : (
               <Sparkle size={16} weight="fill" />
             )}
@@ -590,7 +756,9 @@ export default function GeneratePage() {
                 ? "Gerar Post com Vídeo"
                 : mediaType === "text"
                   ? "Gerar Post Somente Texto"
-                  : "Generate"}
+                  : imageOrigin === "drive"
+                    ? "Gerar Post com esta Imagem"
+                    : "Generate"}
           </Button>
         </div>
 
@@ -725,11 +893,13 @@ export default function GeneratePage() {
                   <Badge>
                     {mediaType === "video" && video
                       ? `Vídeo ${String(video.source || (video as any).provider || "Stock").toUpperCase()}${video.duration ? ` · ${video.duration}s` : ""}`
-                      : image?.source === "ai"
-                        ? avatarName
-                          ? `${avatarName} (Avatar IA)`
-                          : "AI generated"
-                        : "Stock photo"}
+                      : image?.source === "drive"
+                        ? "Imagem do Google Drive"
+                        : image?.source === "ai"
+                          ? avatarName
+                            ? `${avatarName} (Avatar IA)`
+                            : "AI generated"
+                          : "Stock photo"}
                   </Badge>
                   <button
                     type="button"
@@ -742,7 +912,9 @@ export default function GeneratePage() {
                       ? "Buscando…"
                       : mediaType === "video"
                         ? "Trocar vídeo"
-                        : "Regenerar imagem"}
+                        : imageOrigin === "drive"
+                          ? "Trocar imagem do Drive"
+                          : "Regenerar imagem"}
                   </button>
                 </div>
               )}
@@ -916,6 +1088,128 @@ export default function GeneratePage() {
             </div>
           </div>
         </Card>
+      )}
+
+      {/* Modal: Escolher Imagem da Pasta Sincronizada do Drive */}
+      {drivePickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <Card className="w-full max-w-3xl p-5 sm:p-6 shadow-2xl max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Folder size={20} className="text-primary" />
+                <h3 className="font-heading text-lg font-semibold text-foreground">
+                  Escolher Imagem da Pasta Sincronizada
+                </h3>
+              </div>
+              <button
+                onClick={() => setDrivePickerOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="relative flex-1">
+                <MagnifyingGlass size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={driveSearch}
+                  onChange={(e) => setDriveSearch(e.target.value)}
+                  placeholder="Buscar imagem por título ou arquivo..."
+                  className="w-full rounded-xl border border-border bg-surface py-1.5 pl-8 pr-3 text-xs text-foreground focus:border-primary focus:outline-none"
+                />
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={loadDriveImages}
+                disabled={loadingDriveImages}
+                className="h-8 text-xs"
+              >
+                <ArrowClockwise size={13} className={cn(loadingDriveImages && "animate-spin")} />
+                Atualizar
+              </Button>
+            </div>
+
+            <div className="mt-4 flex-1 overflow-y-auto pr-1">
+              {loadingDriveImages ? (
+                <div className="flex h-48 flex-col items-center justify-center gap-2 text-muted-foreground text-xs">
+                  <ArrowClockwise size={24} className="animate-spin text-primary" />
+                  <span>Carregando imagens da biblioteca...</span>
+                </div>
+              ) : driveImages.length === 0 ? (
+                <div className="flex h-48 flex-col items-center justify-center gap-2 text-center p-4 border border-dashed border-border rounded-xl">
+                  <Images size={24} className="text-muted-foreground" />
+                  <p className="text-xs text-muted-foreground">
+                    Nenhuma imagem sincronizada encontrada na biblioteca.
+                  </p>
+                  <Link
+                    href="/dashboard/batch-images"
+                    className="text-xs text-primary font-medium hover:underline mt-1"
+                  >
+                    Ir para Lote de Imagens e sincronizar a pasta do Drive &rarr;
+                  </Link>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {driveImages
+                    .filter((img) => {
+                      if (!driveSearch.trim()) return true;
+                      const q = driveSearch.toLowerCase();
+                      return img.title.toLowerCase().includes(q) || img.raw_filename.toLowerCase().includes(q);
+                    })
+                    .map((item) => {
+                      const isSelected = selectedDriveImage?.id === item.id;
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => handleSelectDriveImage(item)}
+                          className={cn(
+                            "group cursor-pointer rounded-xl border p-2 transition flex flex-col justify-between overflow-hidden text-left",
+                            isSelected
+                              ? "border-primary bg-primary/10 ring-2 ring-primary/30"
+                              : "border-border bg-surface hover:border-primary/50 hover:bg-surface-2"
+                          )}
+                        >
+                          <div className="relative aspect-square w-full rounded-lg overflow-hidden bg-black/10">
+                            <img
+                              src={`https://lh3.googleusercontent.com/d/${item.drive_file_id}`}
+                              alt={item.title}
+                              loading="lazy"
+                              className="h-full w-full object-cover transition duration-200 group-hover:scale-105"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = `https://drive.google.com/uc?export=download&id=${item.drive_file_id}`;
+                              }}
+                            />
+                            {isSelected && (
+                              <div className="absolute top-1.5 right-1.5 bg-primary text-white rounded-full p-0.5 shadow-sm">
+                                <CheckCircle size={14} weight="bold" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-2">
+                            <p className="text-xs font-medium text-foreground line-clamp-1" title={item.title}>
+                              {item.title}
+                            </p>
+                            <p className="text-[10px] font-mono text-muted-foreground truncate">
+                              {item.raw_filename}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-border flex justify-end">
+              <Button size="sm" variant="secondary" onClick={() => setDrivePickerOpen(false)}>
+                Fechar
+              </Button>
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   );

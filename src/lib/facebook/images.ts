@@ -22,7 +22,7 @@ function getUuid(): string {
  * can reliably fetch it without Google Drive redirects or rate limit blocks.
  * Falls back gracefully to direct URLs if upload fails.
  */
-async function ensurePublicImageUrl(fileId: string, currentUrl: string): Promise<string> {
+export async function ensurePublicImageUrl(fileId: string, currentUrl: string): Promise<string> {
   const downloadUrl = getDirectDriveDownloadUrl(fileId);
   const directCdnUrl = getDirectDriveImageUrl(fileId);
 

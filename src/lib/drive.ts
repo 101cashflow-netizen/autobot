@@ -24,6 +24,10 @@ export function extractDriveFileId(input: string): string | null {
   const fileMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
   if (fileMatch) return fileMatch[1];
 
+  // https://lh3.googleusercontent.com/d/<id>
+  const cdnMatch = trimmed.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
+  if (cdnMatch) return cdnMatch[1];
+
   // ?id=<id> or &id=<id> or export=download&id=<id>
   const paramMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
   if (paramMatch) return paramMatch[1];

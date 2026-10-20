@@ -353,7 +353,7 @@ const CreatePostBody = z.object({
   description: z.string().min(1).max(500),
   hashtags: z.array(z.string()).max(15).default([]),
   imageUrl: z.string().url().optional().or(z.literal("")),
-  imageSource: z.enum(["ai", "stock"]).optional(),
+  imageSource: z.enum(["ai", "stock", "drive"]).optional(),
   mediaType: z.enum(["image", "video", "text"]).default("image"),
   mediaUrl: z.string().url().optional().or(z.literal("")),
   linkUrl: z.string().url().optional().or(z.literal("")),
