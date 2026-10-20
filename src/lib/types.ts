@@ -76,6 +76,13 @@ export interface AppSettings {
   reels_posts_per_day?: number;
   reels_posting_hours?: number[];
   last_reels_auto_post_at?: string | null;
+  /** Google Drive Batch Images Automation Settings */
+  google_drive_images_folder_id?: string | null;
+  google_apps_script_images_url?: string | null;
+  images_auto_post_enabled?: boolean;
+  images_posts_per_day?: number;
+  images_posting_hours?: number[];
+  last_images_auto_post_at?: string | null;
   /** Absent on databases created before topics existed; treat as "mine". */
   topic_source?: TopicSource;
   updated_at: string;
@@ -91,6 +98,23 @@ export interface VideoLibraryItem {
   video_url: string;
   file_size?: number | null;
   status: VideoLibraryStatus;
+  scheduled_at?: string | null;
+  published_at?: string | null;
+  facebook_post_id?: string | null;
+  error_message?: string | null;
+  created_at: string;
+}
+
+export type ImageLibraryStatus = "pending" | "scheduled" | "published" | "failed";
+
+export interface ImageLibraryItem {
+  id: string;
+  drive_file_id: string;
+  title: string;
+  raw_filename: string;
+  image_url: string;
+  file_size?: number | null;
+  status: ImageLibraryStatus;
   scheduled_at?: string | null;
   published_at?: string | null;
   facebook_post_id?: string | null;

@@ -18,6 +18,7 @@ import {
   Robot,
   Camera,
   Lightning,
+  Images,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -82,6 +83,11 @@ interface SettingsState {
   reels_auto_post_enabled?: boolean;
   reels_posts_per_day?: number;
   reels_posting_hours?: number[];
+  google_drive_images_folder_id?: string;
+  google_apps_script_images_url?: string;
+  images_auto_post_enabled?: boolean;
+  images_posts_per_day?: number;
+  images_posting_hours?: number[];
 }
 
 export default function SettingsPage() {
@@ -160,6 +166,14 @@ function SettingsForm() {
   const [reelsAutoPostEnabled, setReelsAutoPostEnabled] = useState(false);
   const [reelsPostsPerDay, setReelsPostsPerDay] = useState(1);
   const [reelsPostingHours, setReelsPostingHours] = useState<number[]>([11, 17]);
+  const [driveImagesFolderId, setDriveImagesFolderId] = useState("");
+  const [appsScriptImagesUrl, setAppsScriptImagesUrl] = useState("");
+  const [imagesAutoPostEnabled, setImagesAutoPostEnabled] = useState(false);
+  const [imagesPostsPerDay, setImagesPostsPerDay] = useState(2);
+  const [imagesPostingHours, setImagesPostingHours] = useState<number[]>([10, 16]);
+  const [savingImagesDrive, setSavingImagesDrive] = useState(false);
+  const [driveImagesError, setDriveImagesError] = useState<string | null>(null);
+  const [driveImagesSaved, setDriveImagesSaved] = useState(false);
   // Read from the browser rather than configured, so they always match the
   // hostname the user is actually on — the values Facebook compares against.
   const [redirectUri, setRedirectUri] = useState("");
@@ -199,6 +213,11 @@ function SettingsForm() {
         setReelsAutoPostEnabled(data.reels_auto_post_enabled === true);
         setReelsPostsPerDay(data.reels_posts_per_day || 1);
         setReelsPostingHours(data.reels_posting_hours || [11, 17]);
+        setDriveImagesFolderId(data.google_drive_images_folder_id ?? "");
+        setAppsScriptImagesUrl(data.google_apps_script_images_url ?? "");
+        setImagesAutoPostEnabled(data.images_auto_post_enabled === true);
+        setImagesPostsPerDay(data.images_posts_per_day || 2);
+        setImagesPostingHours(data.images_posting_hours || [10, 16]);
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load settings."));
   }, []);
@@ -504,6 +523,43 @@ function SettingsForm() {
     const has = reelsPostingHours.includes(hour);
     const next = has ? reelsPostingHours.filter((h) => h !== hour) : [...reelsPostingHours, hour].sort((a, b) => a - b);
     setReelsPostingHours(next);
+  }
+
+  async function saveImagesDriveSettings() {
+    setDriveImagesError(null);
+    setDriveImagesSaved(false);
+    setSavingImagesDrive(true);
+    try {
+      const payload: Record<string, any> = {
+        google_drive_images_folder_id: driveImagesFolderId.trim(),
+        google_apps_script_images_url: appsScriptImagesUrl.trim(),
+        images_auto_post_enabled: imagesAutoPostEnabled,
+        images_posts_per_day: Number(imagesPostsPerDay) || 2,
+        images_posting_hours: imagesPostingHours,
+      };
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro ao salvar configurações do lote de imagens.");
+      setSettings((s) => (s ? { ...s, ...data } : s));
+      setDriveImagesSaved(true);
+      setTimeout(() => setDriveImagesSaved(false), 3000);
+    } catch (err) {
+      setDriveImagesError(err instanceof Error ? err.message : "Erro ao salvar configurações do lote de imagens.");
+    } finally {
+      setSavingImagesDrive(false);
+    }
+  }
+
+  function toggleImagesHour(hour: number) {
+    const has = imagesPostingHours.includes(hour);
+    const next = has
+      ? imagesPostingHours.filter((h) => h !== hour)
+      : [...imagesPostingHours, hour].sort((a, b) => a - b);
+    setImagesPostingHours(next);
   }
 
   if (loadError) {
@@ -1687,6 +1743,183 @@ function SettingsForm() {
             <div className="mt-4 flex items-center gap-2">
               <Button size="sm" onClick={saveDriveSettings} disabled={savingDrive}>
                 {savingDrive ? "Salvando…" : "Salvar Configurações do Google Drive & Reels"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Lote de Imagens (Google Drive) */}
+      <Card>
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
+            <Images size={22} weight="fill" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-heading font-bold text-foreground">
+                Lote de Imagens (Google Drive)
+              </h2>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                    driveImagesFolderId
+                      ? "bg-success/10 text-success"
+                      : "bg-surface-2 text-muted-foreground"
+                  )}
+                >
+                  {driveImagesFolderId ? <CheckCircle size={13} /> : null}
+                  Pasta: {driveImagesFolderId ? "Configurada" : "Não configurada"}
+                </span>
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                    imagesAutoPostEnabled
+                      ? "bg-primary/10 text-primary font-semibold"
+                      : "bg-surface-2 text-muted-foreground"
+                  )}
+                >
+                  Automação: {imagesAutoPostEnabled ? "Ativada" : "Pausada"}
+                </span>
+              </div>
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Conecte uma pasta pública do Google Drive onde você coloca imagens geradas em lote. O bot sincroniza os arquivos, gera a copy com IA e publica automaticamente de acordo com seus horários definidos.
+            </p>
+
+            <div className="mt-3 flex flex-wrap gap-4 text-xs">
+              <Link
+                href="/dashboard/batch-images"
+                className="font-medium text-primary hover:underline"
+              >
+                Gerenciar Lote de Imagens &rarr;
+              </Link>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Link ou ID da Pasta de Imagens do Google Drive
+                </label>
+                <input
+                  type="text"
+                  value={driveImagesFolderId}
+                  onChange={(e) => setDriveImagesFolderId(e.target.value)}
+                  placeholder="https://drive.google.com/drive/folders/1ABC... ou ID da pasta"
+                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  A pasta deve estar compartilhada como &quot;Qualquer pessoa com o link pode ver&quot;.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground">
+                  URL do Google Apps Script (Web App) para Imagens
+                </label>
+                <input
+                  type="text"
+                  value={appsScriptImagesUrl}
+                  onChange={(e) => setAppsScriptImagesUrl(e.target.value)}
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Opcional, mas recomendado para contornar bloqueios de API pública do Google.
+                </p>
+              </div>
+            </div>
+
+            {/* Configurações de Autopilot de Imagens */}
+            <div className="mt-4 rounded-xl border border-border bg-surface-2/30 p-3.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Publicação Automática de Imagens em Lote (Autopilot)
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Permite postar automaticamente as imagens pendentes da pasta do Drive.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setImagesAutoPostEnabled(!imagesAutoPostEnabled)}
+                  aria-label="Alternar autopost de Imagens"
+                  className={cn(
+                    "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors",
+                    imagesAutoPostEnabled ? "bg-primary" : "bg-surface-2"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 mt-1",
+                      imagesAutoPostEnabled ? "left-6" : "left-1"
+                    )}
+                    style={{ position: "absolute" }}
+                  />
+                </button>
+              </div>
+
+              {imagesAutoPostEnabled && (
+                <div className="mt-4 space-y-4 border-t border-border pt-4">
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Imagens por dia
+                    </label>
+                    <div className="mt-1 flex items-center gap-3">
+                      <input
+                        type="range"
+                        min={1}
+                        max={10}
+                        value={imagesPostsPerDay}
+                        onChange={(e) => setImagesPostsPerDay(Number(e.target.value))}
+                        className="w-48"
+                      />
+                      <span className="font-mono text-sm font-bold text-foreground">
+                        {imagesPostsPerDay} post{imagesPostsPerDay > 1 ? "s" : ""}/dia
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Horários permitidos para publicação de Imagens (horário local)
+                    </label>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {Array.from({ length: 24 }).map((_, h) => (
+                        <button
+                          key={h}
+                          type="button"
+                          onClick={() => toggleImagesHour(h)}
+                          className={cn(
+                            "h-7 w-8 rounded-lg text-xs font-medium transition",
+                            imagesPostingHours.includes(h)
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-surface-2 text-muted-foreground hover:bg-border"
+                          )}
+                        >
+                          {h}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {driveImagesError && (
+              <p className="mt-3 text-xs text-destructive">{driveImagesError}</p>
+            )}
+            {driveImagesSaved && (
+              <p className="mt-3 text-xs font-medium text-success">
+                Configurações do Lote de Imagens salvas com sucesso! ✓
+              </p>
+            )}
+
+            <div className="mt-4 flex items-center gap-2">
+              <Button size="sm" onClick={saveImagesDriveSettings} disabled={savingImagesDrive}>
+                {savingImagesDrive ? "Salvando…" : "Salvar Configurações do Lote de Imagens"}
               </Button>
             </div>
           </div>

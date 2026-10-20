@@ -179,3 +179,29 @@ alter table app_settings add column if not exists reels_auto_post_enabled boolea
 alter table app_settings add column if not exists reels_posts_per_day smallint not null default 1;
 alter table app_settings add column if not exists reels_posting_hours int[] not null default '{11,17}';
 alter table app_settings add column if not exists last_reels_auto_post_at timestamptz;
+
+-- Image Library for Batch Images (Google Drive Integration)
+create table if not exists image_library (
+  id uuid primary key default gen_random_uuid(),
+  drive_file_id text unique not null,
+  title text not null,
+  raw_filename text not null,
+  image_url text not null,
+  file_size bigint,
+  status text not null default 'pending', -- 'pending' | 'scheduled' | 'published' | 'failed'
+  scheduled_at timestamptz,
+  published_at timestamptz,
+  facebook_post_id text,
+  error_message text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists image_library_status_idx on image_library (status);
+create index if not exists image_library_created_idx on image_library (created_at desc);
+
+alter table app_settings add column if not exists google_drive_images_folder_id text;
+alter table app_settings add column if not exists google_apps_script_images_url text;
+alter table app_settings add column if not exists images_auto_post_enabled boolean not null default false;
+alter table app_settings add column if not exists images_posts_per_day smallint not null default 2;
+alter table app_settings add column if not exists images_posting_hours int[] not null default '{10,16}';
+alter table app_settings add column if not exists last_images_auto_post_at timestamptz;

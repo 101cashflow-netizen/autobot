@@ -163,3 +163,48 @@ export async function maybeRunReelsAutopilot(): Promise<{
     return { ran: false, reason: err instanceof Error ? err.message : "publish_failed" };
   }
 }
+
+/**
+ * Autopilot for batch images from the Google Drive Image Library.
+ * On each cron tick, checks if batch images autopilot is enabled, allowed hours,
+ * and if so picks the next pending image, generates AI copy, and publishes.
+ */
+export async function maybeRunBatchImagesAutopilot(): Promise<{
+  ran: boolean;
+  image?: import("@/lib/types").ImageLibraryItem;
+  reason?: string;
+}> {
+  const { getNextPendingImage } = await import("@/lib/db/images");
+  const { publishImageFromLibrary } = await import("@/lib/facebook/images");
+  const settings = await getSettings();
+
+  if (!settings.images_auto_post_enabled) return { ran: false, reason: "disabled" };
+  if (!isFacebookConnected(settings)) return { ran: false, reason: "not_connected" };
+  if (!settings.default_page_id || !settings.default_page_token) {
+    return { ran: false, reason: "no_default_page" };
+  }
+
+  const { dateKey, hour } = localParts(new Date(), settings.timezone);
+  const postingHours = settings.images_posting_hours || [10, 16];
+  if (!postingHours.includes(hour)) {
+    return { ran: false, reason: "outside_posting_hours" };
+  }
+
+  if (settings.last_images_auto_post_at) {
+    const last = localParts(new Date(settings.last_images_auto_post_at), settings.timezone);
+    if (last.dateKey === dateKey && last.hour === hour) {
+      return { ran: false, reason: "already_posted_this_slot" };
+    }
+  }
+
+  const nextImage = await getNextPendingImage();
+  if (!nextImage) return { ran: false, reason: "no_pending_images" };
+
+  try {
+    const published = await publishImageFromLibrary(nextImage.id);
+    await updateSettings({ last_images_auto_post_at: new Date().toISOString() });
+    return { ran: true, image: published };
+  } catch (err) {
+    return { ran: false, reason: err instanceof Error ? err.message : "publish_failed" };
+  }
+}

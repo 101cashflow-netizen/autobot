@@ -11,6 +11,7 @@ import {
   FlagBanner,
   GearSix,
   VideoCamera,
+  Images,
 } from "@phosphor-icons/react/dist/ssr";
 import { Logo } from "@/components/logo";
 import { cn } from "@/lib/cn";
@@ -20,6 +21,7 @@ const NAV = [
   { href: "/dashboard/generate", label: "Criar Post", icon: MagicWand },
   { href: "/dashboard/topics", label: "Banco de Temas", icon: Lightbulb },
   { href: "/dashboard/reels", label: "Vídeos & Reels", icon: VideoCamera },
+  { href: "/dashboard/batch-images", label: "Lote de Imagens", icon: Images },
   { href: "/dashboard/queue", label: "Fila & Agendados", icon: ClockCountdown },
   { href: "/dashboard/history", label: "Histórico", icon: ListChecks },
   { href: "/dashboard/pages", label: "Páginas", icon: FlagBanner },

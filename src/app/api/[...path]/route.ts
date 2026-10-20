@@ -169,6 +169,11 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
     reels_auto_post_enabled: settings.reels_auto_post_enabled === true,
     reels_posts_per_day: settings.reels_posts_per_day || 1,
     reels_posting_hours: settings.reels_posting_hours || [11, 17],
+    google_drive_images_folder_id: settings.google_drive_images_folder_id || "",
+    google_apps_script_images_url: settings.google_apps_script_images_url || "",
+    images_auto_post_enabled: settings.images_auto_post_enabled === true,
+    images_posts_per_day: settings.images_posts_per_day || 2,
+    images_posting_hours: settings.images_posting_hours || [10, 16],
     avatar_enabled: settings.avatar_enabled !== false,
     avatar_name: settings.avatar_name || DEFAULT_AVATAR_NAME,
     avatar_prompt: settings.avatar_prompt || DEFAULT_AVATAR_PROMPT,
@@ -241,6 +246,25 @@ export async function GET(req: Request, ctx: Ctx) {
         apps_script_url: settings.google_apps_script_url || null,
         auto_post_enabled: settings.reels_auto_post_enabled === true,
         posts_per_day: settings.reels_posts_per_day || 1,
+      });
+    }
+
+    if (route === "batch-images") {
+      const { listImageLibrary } = await import("@/lib/db/images");
+      const status = url.searchParams.get("status");
+      const [images, settings] = await Promise.all([
+        listImageLibrary({
+          status: status ? (status.split(",") as any) : undefined,
+        }),
+        getSettings(),
+      ]);
+      return json({
+        images,
+        folder_id: settings.google_drive_images_folder_id || settings.google_drive_folder_id || null,
+        apps_script_url: settings.google_apps_script_images_url || settings.google_apps_script_url || null,
+        auto_post_enabled: settings.images_auto_post_enabled === true,
+        posts_per_day: settings.images_posts_per_day || 2,
+        posting_hours: settings.images_posting_hours || [10, 16],
       });
     }
 
@@ -533,6 +557,76 @@ export async function POST(req: Request, ctx: Ctx) {
       }
     }
 
+    // batch-images/import-links (Imports one or multiple Google Drive image links)
+    if (route === "batch-images/import-links") {
+      const body = await req.json().catch(() => ({}));
+      const links = String(body?.links || "").trim();
+      if (!links) {
+        return json({ error: "Cole ao menos um link de imagem do Google Drive." }, 400);
+      }
+
+      const settings = await getSettings();
+      const { getEffectiveGeminiApiKey } = await import("@/lib/ai/gemini-key");
+      const apiKey = (settings.google_drive_api_key || (await getEffectiveGeminiApiKey()) || "").trim();
+
+      const { addImagesFromLinks } = await import("@/lib/db/images");
+      try {
+        const res = await addImagesFromLinks(links, apiKey || undefined);
+        return json({ ok: true, ...res });
+      } catch (err) {
+        return json({ error: err instanceof Error ? err.message : "Erro ao importar links de imagem." }, 400);
+      }
+    }
+
+    // batch-images/sync (Scans Google Drive folder and imports new images)
+    if (route === "batch-images/sync") {
+      const settings = await getSettings();
+      const body = await req.json().catch(() => ({}));
+      const folderInput = (
+        body?.folderId ||
+        settings.google_drive_images_folder_id ||
+        settings.google_drive_folder_id ||
+        ""
+      ).trim();
+      const appsScriptUrl = (
+        body?.appsScriptUrl ||
+        settings.google_apps_script_images_url ||
+        settings.google_apps_script_url ||
+        ""
+      ).trim();
+
+      if (!folderInput && !appsScriptUrl) {
+        return json({ error: "Informe o link ou ID da pasta do Google Drive nas Configurações." }, 400);
+      }
+      const { getEffectiveGeminiApiKey } = await import("@/lib/ai/gemini-key");
+      const apiKey = (settings.google_drive_api_key || (await getEffectiveGeminiApiKey()) || "").trim();
+
+      const { listDriveFolderImages } = await import("@/lib/drive");
+      const { syncDriveImages } = await import("@/lib/db/images");
+      try {
+        const files = await listDriveFolderImages(
+          folderInput || appsScriptUrl,
+          apiKey || undefined,
+          appsScriptUrl || undefined
+        );
+        const res = await syncDriveImages(files);
+        return json({ ok: true, found: files.length, ...res });
+      } catch (err) {
+        return json({ error: err instanceof Error ? err.message : "Erro ao sincronizar pasta do Google Drive." }, 502);
+      }
+    }
+
+    // batch-images/<id>/post-now
+    if (path.length === 3 && path[0] === "batch-images" && path[2] === "post-now") {
+      const { publishImageFromLibrary } = await import("@/lib/facebook/images");
+      try {
+        const image = await publishImageFromLibrary(path[1]);
+        return json({ ok: true, image });
+      } catch (err) {
+        return json({ error: err instanceof Error ? err.message : "Falha ao publicar imagem." }, 502);
+      }
+    }
+
     if (route === "facebook/default-page") {
       const parsed = DefaultPageBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return json({ error: "pageId is required." }, 400);
@@ -643,6 +737,11 @@ const SettingsBody = z.object({
   reels_auto_post_enabled: z.boolean().optional(),
   reels_posts_per_day: z.number().int().min(1).max(20).optional(),
   reels_posting_hours: z.array(z.number().int().min(0).max(23)).min(1).max(24).optional(),
+  google_drive_images_folder_id: z.string().trim().optional(),
+  google_apps_script_images_url: z.string().trim().optional(),
+  images_auto_post_enabled: z.boolean().optional(),
+  images_posts_per_day: z.number().int().min(1).max(20).optional(),
+  images_posting_hours: z.array(z.number().int().min(0).max(23)).min(1).max(24).optional(),
 });
 
 const UpdateTopicBody = z.object({
@@ -791,6 +890,21 @@ export async function PATCH(req: Request, ctx: Ctx) {
       return json({ ok: true, video: updated });
     }
 
+    // batch-images/<id>
+    if (path.length === 2 && path[0] === "batch-images") {
+      const { updateImageItem } = await import("@/lib/db/images");
+      const body = await req.json().catch(() => ({}));
+      const updated = await updateImageItem(path[1], {
+        ...(body.title !== undefined && { title: body.title }),
+        ...(body.status !== undefined && {
+          status: body.status,
+          ...(body.status !== "failed" ? { error_message: null } : {}),
+        }),
+        ...(body.scheduledAt !== undefined && { scheduled_at: body.scheduledAt }),
+      });
+      return json({ ok: true, image: updated });
+    }
+
     return notFound();
   });
 }
@@ -814,6 +928,12 @@ export async function DELETE(req: Request, ctx: Ctx) {
     if (path.length === 2 && path[0] === "reels") {
       const { deleteVideoItem } = await import("@/lib/db/videos");
       await deleteVideoItem(path[1]);
+      return json({ ok: true });
+    }
+
+    if (path.length === 2 && path[0] === "batch-images") {
+      const { deleteImageItem } = await import("@/lib/db/images");
+      await deleteImageItem(path[1]);
       return json({ ok: true });
     }
 
@@ -965,12 +1085,13 @@ async function runCron(req: Request, url: URL) {
     queueResults.push({ id: result.id, status: result.status });
   }
 
-  const { maybeRunReelsAutopilot } = await import("@/lib/autopilot");
+  const { maybeRunReelsAutopilot, maybeRunBatchImagesAutopilot } = await import("@/lib/autopilot");
   return json({
     ok: true,
     processedFromQueue: queueResults.length,
     queueResults,
     autopilot: await maybeRunAutopilot(),
     reelsAutopilot: await maybeRunReelsAutopilot(),
+    batchImagesAutopilot: await maybeRunBatchImagesAutopilot(),
   });
 }
