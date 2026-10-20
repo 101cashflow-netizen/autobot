@@ -237,7 +237,19 @@ export async function listDriveFolderViaAppsScript(
     redirect: "follow",
   });
   if (!res.ok) {
-    throw new Error(`Google Apps Script retornou erro (${res.status}): ${await res.text().catch(() => "")}`);
+    const errText = await res.text().catch(() => "");
+    if (
+      res.status === 403 ||
+      res.status === 401 ||
+      errText.includes("Acesso negado") ||
+      errText.includes("Você precisa ter acesso")
+    ) {
+      throw new Error(
+        "Acesso Negado (Erro 403) no Google Apps Script: o script não está com acesso público. No editor do Google Apps Script (script.google.com), clique no botão azul 'Implantar' > 'Gerenciar implantações' > clique no ícone de lápis (Editar) > em 'Quem tem acesso' (Who has access), altere de 'Apenas eu' para 'Qualquer pessoa' (Anyone), selecione 'Nova versão' e clique em 'Implantar'."
+      );
+    }
+    const cleanErr = errText.startsWith("<") ? `HTTP ${res.status}` : errText;
+    throw new Error(`Google Apps Script retornou erro (${res.status}): ${cleanErr}`);
   }
   const data = await res.json();
   if (data?.error) {
@@ -365,7 +377,19 @@ export async function listDriveFolderImagesViaAppsScript(
     redirect: "follow",
   });
   if (!res.ok) {
-    throw new Error(`Google Apps Script retornou erro (${res.status}): ${await res.text().catch(() => "")}`);
+    const errText = await res.text().catch(() => "");
+    if (
+      res.status === 403 ||
+      res.status === 401 ||
+      errText.includes("Acesso negado") ||
+      errText.includes("Você precisa ter acesso")
+    ) {
+      throw new Error(
+        "Acesso Negado (Erro 403) no Google Apps Script: o script não está com acesso público. No editor do Google Apps Script (script.google.com), clique no botão azul 'Implantar' > 'Gerenciar implantações' > clique no ícone de lápis (Editar) > em 'Quem tem acesso' (Who has access), altere de 'Apenas eu' para 'Qualquer pessoa' (Anyone), selecione 'Nova versão' e clique em 'Implantar'."
+      );
+    }
+    const cleanErr = errText.startsWith("<") ? `HTTP ${res.status}` : errText;
+    throw new Error(`Google Apps Script retornou erro (${res.status}): ${cleanErr}`);
   }
   const data = await res.json();
   if (data?.error) {
