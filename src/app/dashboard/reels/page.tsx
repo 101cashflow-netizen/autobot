@@ -32,8 +32,8 @@ import type { VideoLibraryItem, VideoLibraryStatus } from "@/lib/types";
 
 type FilterTab = "all" | "pending" | "published" | "failed";
 
-const APPS_SCRIPT_CODE = `// 1. Cole aqui o ID ou link da sua pasta do Google Drive (ou passe ?folderId= na URL)
-var FOLDER_ID = ""; // Exemplo: "1a2B3c4D5e..." ou link completo da pasta
+const APPS_SCRIPT_CODE = `// Script Unificado do Google Apps Script para o Autobot (Vídeos & Imagens)
+var FOLDER_ID = ""; // Opcional: Cole aqui o ID ou link da pasta (ou passe ?folderId= na URL)
 
 function doGet(e) {
   var folderParam = (e && e.parameter && (e.parameter.folderId || e.parameter.id)) || FOLDER_ID;
@@ -47,6 +47,9 @@ function doGet(e) {
   var match = folderParam.match(/\\/folders\\/([a-zA-Z0-9_-]+)/);
   var folderId = match ? match[1] : folderParam.trim();
 
+  // Tipo solicitado pelo bot: 'image', 'video' ou 'all'
+  var type = (e && e.parameter && e.parameter.type) ? e.parameter.type.toLowerCase() : "all";
+
   try {
     var folder = DriveApp.getFolderById(folderId);
     var files = folder.getFiles();
@@ -55,7 +58,14 @@ function doGet(e) {
       var f = files.next();
       var mime = f.getMimeType();
       var name = f.getName();
-      if (mime.indexOf("video/") === 0 || /\\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(name)) {
+      var isVideo = mime.indexOf("video/") === 0 || /\\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(name);
+      var isImage = mime.indexOf("image/") === 0 || /\\.(jpe?g|png|webp|gif|bmp|tiff|svg)$/i.test(name);
+
+      if (type === "image" && isImage) {
+        list.push({ id: f.getId(), name: name, size: f.getSize(), mimeType: mime });
+      } else if (type === "video" && isVideo) {
+        list.push({ id: f.getId(), name: name, size: f.getSize(), mimeType: mime });
+      } else if (type === "all" && (isVideo || isImage)) {
         list.push({ id: f.getId(), name: name, size: f.getSize(), mimeType: mime });
       }
     }

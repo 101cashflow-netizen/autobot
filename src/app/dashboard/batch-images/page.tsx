@@ -35,20 +35,23 @@ import type { ImageLibraryItem, ImageLibraryStatus } from "@/lib/types";
 
 type FilterTab = "all" | "pending" | "published" | "failed";
 
-const APPS_SCRIPT_IMAGES_CODE = `// 1. Cole aqui o ID ou link da sua pasta do Google Drive (ou passe ?folderId= na URL)
-var FOLDER_ID = ""; // Exemplo: "1a2B3c4D5e..." ou link completo da pasta
+const APPS_SCRIPT_IMAGES_CODE = `// Script Unificado do Google Apps Script para o Autobot (Vídeos & Imagens)
+var FOLDER_ID = ""; // Opcional: Cole aqui o ID ou link da pasta (ou passe ?folderId= na URL)
 
 function doGet(e) {
   var folderParam = (e && e.parameter && (e.parameter.folderId || e.parameter.id)) || FOLDER_ID;
   if (!folderParam) {
     return ContentService.createTextOutput(JSON.stringify({ 
-      error: "Informe o ID da pasta na variavel FOLDER_ID no topo do script ou adicione ?folderId=SEU_ID no final da URL." 
+      error: "Informe o ID da pasta na variavel FOLDER_ID no topo do script ou adicione ?folderId=SEU_ID na URL." 
     })).setMimeType(ContentService.MimeType.JSON);
   }
 
   // Extrai o ID caso seja um link completo do Drive
   var match = folderParam.match(/\\/folders\\/([a-zA-Z0-9_-]+)/);
   var folderId = match ? match[1] : folderParam.trim();
+
+  // Tipo solicitado pelo bot: 'image', 'video' ou 'all'
+  var type = (e && e.parameter && e.parameter.type) ? e.parameter.type.toLowerCase() : "all";
 
   try {
     var folder = DriveApp.getFolderById(folderId);
@@ -58,8 +61,14 @@ function doGet(e) {
       var f = files.next();
       var mime = f.getMimeType();
       var name = f.getName();
-      // Filtra arquivos de imagem gerados em lote
-      if (mime.indexOf("image/") === 0 || /\\.(jpe?g|png|webp|gif|bmp)$/i.test(name)) {
+      var isVideo = mime.indexOf("video/") === 0 || /\\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(name);
+      var isImage = mime.indexOf("image/") === 0 || /\\.(jpe?g|png|webp|gif|bmp|tiff|svg)$/i.test(name);
+
+      if (type === "image" && isImage) {
+        list.push({ id: f.getId(), name: name, size: f.getSize(), mimeType: mime });
+      } else if (type === "video" && isVideo) {
+        list.push({ id: f.getId(), name: name, size: f.getSize(), mimeType: mime });
+      } else if (type === "all" && (isVideo || isImage)) {
         list.push({ id: f.getId(), name: name, size: f.getSize(), mimeType: mime });
       }
     }

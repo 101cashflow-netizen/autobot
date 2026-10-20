@@ -231,6 +231,11 @@ export async function listDriveFolderViaAppsScript(
     url.searchParams.set("folderId", extractDriveFolderId(folderId));
   }
 
+  // Ask script for videos specifically if supported
+  if (!url.searchParams.has("type")) {
+    url.searchParams.set("type", "video");
+  }
+
   const res = await fetch(url.toString(), {
     method: "GET",
     signal: AbortSignal.timeout(15000),
@@ -263,7 +268,14 @@ export async function listDriveFolderViaAppsScript(
   const rawFiles: Array<{ id: string; name: string; mimeType?: string; size?: string | number }> =
     data?.files || (Array.isArray(data) ? data : []);
 
-  return rawFiles.map((f) => ({
+  // Filter video files (in case the script returned all files)
+  const videoFiles = rawFiles.filter((f) => {
+    const isVideoMime = f.mimeType?.startsWith("video/");
+    const hasVideoExt = /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(f.name || "");
+    return isVideoMime || hasVideoExt || !f.mimeType?.startsWith("image/");
+  });
+
+  return videoFiles.map((f) => ({
     id: f.id,
     name: f.name || `Vídeo ${f.id.slice(0, 6)}`,
     size: f.size ? Number(f.size) : undefined,
