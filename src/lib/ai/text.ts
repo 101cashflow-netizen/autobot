@@ -529,3 +529,55 @@ export async function generateReelsContent(
     providerErrors: failures,
   };
 }
+
+export function buildRepostSystemPrompt(customRules?: string): string {
+  const extra = customRules?.trim() ? `\n- Additional user directives: ${customRules.trim()}` : "";
+  return `You are an expert social media copywriter specializing in Facebook page viral reach and engagement.
+Given an original Facebook post text, your task is to rewrite and optimize it into a fresh, unique version with high emotional impact and engagement, while preserving the key message and context.
+
+Strict Output Format:
+Return ONLY valid JSON matching this exact shape with no Markdown fences and no explanations:
+{"title": string, "description": string, "hashtags": string[]}
+
+Rules:
+- title: Scroll-stopping hook or headline (1 short sentence, <= 90 characters). Must catch immediate attention in the mobile feed.
+- description: Engaging, conversational body text (2 to 4 sentences, <= 450 characters). Maintain the core essence of the original post, improve readability, and end with an engaging call-to-action or thoughtful question.
+- hashtags: 3 to 6 high-traffic, relevant hashtags. Lowercase, without '#' symbol, no spaces.
+- Language: Keep the same language as the original post.${extra}`;
+}
+
+export async function generateRepostContent(
+  originalMessage: string,
+  customDirectives?: string
+): Promise<GeneratedContent> {
+  const failures: string[] = [];
+  const systemPrompt = buildRepostSystemPrompt(customDirectives);
+  const chain = await providerChain(originalMessage, "auto", failures, systemPrompt);
+
+  for (const { provider, run } of chain) {
+    try {
+      const parsed = parseContent(await run());
+      return { ...parsed, provider, providerErrors: failures };
+    } catch (err) {
+      failures.push(`${provider}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Fallback: extract title, description and hashtags from the original message
+  const lines = originalMessage.split("\n").map((l) => l.trim()).filter(Boolean);
+  const title = lines[0]?.slice(0, 100) || "Destaque do Dia";
+  const rawTags = (originalMessage.match(/#[a-zA-Z0-9_\u00C0-\u017F]+/g) || []).map((t) =>
+    t.replace(/^#/, "").toLowerCase()
+  );
+  const cleanDesc = lines.slice(1).join(" ").replace(/#[a-zA-Z0-9_\u00C0-\u017F]+/g, "").trim();
+
+  return {
+    title,
+    description: cleanDesc.slice(0, 480) || originalMessage.slice(0, 480),
+    hashtags: rawTags.length > 0 ? rawTags.slice(0, 6) : ["destaque", "milionario", "sucesso"],
+    provider: "template",
+    providerError: failures[0],
+    providerErrors: failures,
+  };
+}
+

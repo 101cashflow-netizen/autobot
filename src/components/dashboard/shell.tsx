@@ -16,6 +16,7 @@ import {
   SignOut,
   VideoCamera,
   Images,
+  ShareFat,
 } from "@phosphor-icons/react/dist/ssr";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -28,6 +29,7 @@ const NAV = [
   { href: "/dashboard/topics", label: "Banco de Temas", icon: Lightbulb },
   { href: "/dashboard/reels", label: "Vídeos & Reels", icon: VideoCamera },
   { href: "/dashboard/batch-images", label: "Lote de Imagens", icon: Images },
+  { href: "/dashboard/repost", label: "Repostagem", icon: ShareFat },
   { href: "/dashboard/queue", label: "Fila & Agendados", icon: ClockCountdown },
   { href: "/dashboard/history", label: "Histórico", icon: ListChecks },
   { href: "/dashboard/pages", label: "Páginas", icon: FlagBanner },
@@ -40,6 +42,7 @@ const TITLES: Record<string, string> = {
   "/dashboard/topics": "Banco de Temas",
   "/dashboard/reels": "Biblioteca de Vídeos & Reels",
   "/dashboard/batch-images": "Lote de Imagens (Google Drive)",
+  "/dashboard/repost": "Repostagem Automática de Páginas",
   "/dashboard/queue": "Fila & Agendados",
   "/dashboard/history": "Histórico de Publicações",
   "/dashboard/pages": "Páginas do Facebook",

@@ -21,7 +21,7 @@ async function loadSettings(): Promise<AppSettings> {
   return data;
 }
 
-async function graph(path: string, params: Record<string, string>, init?: RequestInit) {
+export async function graph(path: string, params: Record<string, string>, init?: RequestInit) {
   const url = `${GRAPH_BASE}${path}`;
   const res = await fetch(init?.method === "POST" ? url : `${url}?${new URLSearchParams(params)}`, {
     ...init,
@@ -40,6 +40,57 @@ async function graph(path: string, params: Record<string, string>, init?: Reques
   }
   return body;
 }
+
+/**
+ * Resolves a valid non-expiring Page token and name for any given page_id.
+ * Checks app_settings, pages_cache, and falls back to Graph API if not yet cached.
+ */
+export async function getPageToken(pageId: string): Promise<{ token: string; name: string } | null> {
+  const db = supabaseAdmin();
+  const settings = await loadSettings();
+
+  // 1. If it matches default_page_id in settings and has token
+  if (settings.default_page_id === pageId && settings.default_page_token) {
+    return { token: settings.default_page_token, name: settings.default_page_name || "" };
+  }
+
+  // 2. Check pages_cache
+  const { data: cached } = await db
+    .from("pages_cache")
+    .select("page_id, name, access_token")
+    .eq("page_id", pageId)
+    .single();
+
+  if (cached?.access_token) {
+    return { token: cached.access_token, name: cached.name || "" };
+  }
+
+  // 3. Fallback: refresh pages from Graph API
+  try {
+    const pages = await fetchPages();
+    if (pages.length > 0) {
+      await db.from("pages_cache").upsert(
+        pages.map((p) => ({
+          page_id: p.id,
+          name: p.name,
+          category: p.category,
+          access_token: p.access_token,
+          fetched_at: new Date().toISOString(),
+        })),
+        { onConflict: "page_id" }
+      );
+    }
+    const match = pages.find((p) => p.id === pageId);
+    if (match?.access_token) {
+      return { token: match.access_token, name: match.name };
+    }
+  } catch (e) {
+    console.warn("Could not fetch page token from Graph API:", e);
+  }
+
+  return null;
+}
+
 
 export interface FacebookPage {
   id: string;

@@ -83,10 +83,34 @@ export interface AppSettings {
   images_posts_per_day?: number;
   images_posting_hours?: number[];
   last_images_auto_post_at?: string | null;
+  /** Automatic Reposting between Facebook Pages */
+  repost_enabled?: boolean;
+  repost_source_page_id?: string | null;
+  repost_source_page_name?: string | null;
+  repost_target_page_ids?: string[];
+  repost_ai_rewrite?: boolean;
+  repost_ai_prompt?: string | null;
+  last_repost_check_at?: string | null;
   /** Absent on databases created before topics existed; treat as "mine". */
   topic_source?: TopicSource;
   updated_at: string;
 }
+
+export interface RepostLog {
+  id: string;
+  source_page_id: string;
+  source_page_name?: string | null;
+  source_post_id: string;
+  target_page_id: string;
+  target_page_name?: string | null;
+  target_post_id?: string | null;
+  post_title?: string | null;
+  status: "success" | "failed";
+  error_message?: string | null;
+  reposted_at: string;
+  created_at: string;
+}
+
 
 export type VideoLibraryStatus = "pending" | "scheduled" | "published" | "failed";
 

@@ -72,7 +72,7 @@ export default function GeneratePage() {
   const [linkUrl, setLinkUrl] = useState("");
 
   const [pages, setPages] = useState<PageCache[]>([]);
-  const [pageId, setPageId] = useState("");
+  const [selectedPageIds, setSelectedPageIds] = useState<string[]>([]);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
   const [saving, setSaving] = useState<"draft" | "schedule" | "post_now" | null>(null);
@@ -165,13 +165,21 @@ export default function GeneratePage() {
     fetch("/api/facebook/pages")
       .then((r) => r.json())
       .then((d) => {
-        setPages(d.pages ?? []);
-        if (d.defaultPageId) setPageId(d.defaultPageId);
+        const loaded: PageCache[] = d.pages ?? [];
+        setPages(loaded);
+        if (d.defaultPageId) {
+          setSelectedPageIds([d.defaultPageId]);
+        } else if (loaded.length > 0) {
+          setSelectedPageIds([loaded[0].page_id]);
+        }
       })
       .catch(() => {});
   }, []);
 
-  const selectedPage = useMemo(() => pages.find((p) => p.page_id === pageId), [pages, pageId]);
+  const selectedPageNames = useMemo(
+    () => pages.filter((p) => selectedPageIds.includes(p.page_id)).map((p) => p.name),
+    [pages, selectedPageIds]
+  );
 
   async function generate() {
     if (topic.trim().length < 2) {
@@ -382,8 +390,8 @@ export default function GeneratePage() {
 
   async function save(action: "draft" | "schedule" | "post_now") {
     if (!content || (mediaType !== "text" && !image && !video)) return;
-    if (action !== "draft" && !pageId) {
-      setError("Choose a Page before scheduling or posting.");
+    if (action !== "draft" && selectedPageIds.length === 0) {
+      setError("Selecione ao menos uma Página antes de agendar ou publicar.");
       return;
     }
     if (action === "schedule" && !scheduledAt) {
@@ -396,6 +404,8 @@ export default function GeneratePage() {
     try {
       const isVideo = mediaType === "video" && !!video;
       const isText = mediaType === "text";
+      const firstPage = pages.find((p) => p.page_id === selectedPageIds[0]);
+
       const res = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -417,8 +427,9 @@ export default function GeneratePage() {
           mediaType: isText ? "text" : isVideo ? "video" : "image",
           mediaUrl: isVideo ? video!.url : undefined,
           linkUrl: linkUrl || undefined,
-          pageId: pageId || selectedPage?.page_id || "unset",
-          pageName: selectedPage?.name ?? "Unset",
+          pageIds: selectedPageIds,
+          pageId: selectedPageIds[0] || "unset",
+          pageName: firstPage?.name ?? "Unset",
           action,
           scheduledAt: action === "schedule" ? new Date(scheduledAt).toISOString() : undefined,
         }),
@@ -426,23 +437,36 @@ export default function GeneratePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to save post.");
 
-      if (action === "post_now" && data.post.status === "failed") {
-        throw new Error(data.post.error_message ?? "Facebook rejected this post.");
+      if (action === "post_now") {
+        const postsList = data.posts || (data.post ? [data.post] : []);
+        const failedPost = postsList.find((p: any) => p.status === "failed");
+        if (failedPost) {
+          throw new Error(failedPost.error_message ?? "Facebook rejected one or more posts.");
+        }
       }
+
+      const totalCount = data.count || (data.posts ? data.posts.length : 1);
+      const isMulti = totalCount > 1;
 
       setSuccess(
         action === "draft"
-          ? "Salvo como rascunho."
+          ? isMulti
+            ? `${totalCount} rascunhos salvos com sucesso.`
+            : "Salvo como rascunho."
           : action === "schedule"
-            ? "Post agendado com sucesso."
-            : isVideo
-              ? "Vídeo publicado no Facebook 🎉"
-              : isText
-                ? "Post de texto publicado no Facebook 🎉"
-                : "Foto publicada no Facebook 🎉"
+            ? isMulti
+              ? `${totalCount} posts agendados com sucesso.`
+              : "Post agendado com sucesso."
+            : isMulti
+              ? `Publicado com sucesso em ${totalCount} páginas! 🎉`
+              : isVideo
+                ? "Vídeo publicado no Facebook 🎉"
+                : isText
+                  ? "Post de texto publicado no Facebook 🎉"
+                  : "Foto publicada no Facebook 🎉"
       );
       setPublishedUrl(
-        action === "post_now" && data.post.facebook_post_id
+        action === "post_now" && data.post?.facebook_post_id
           ? facebookPostUrl(data.post.facebook_post_id)
           : null
       );
@@ -870,7 +894,11 @@ export default function GeneratePage() {
                         FB
                       </div>
                       <div>
-                        <p className="text-xs font-semibold text-foreground leading-none">{selectedPage?.name || "Sua Página"}</p>
+                        <p className="text-xs font-semibold text-foreground leading-none">
+                          {selectedPageNames.length > 1
+                            ? `${selectedPageNames.length} Páginas Selecionadas`
+                            : selectedPageNames[0] || "Sua Página"}
+                        </p>
                         <p className="text-[10px] text-muted-foreground mt-0.5">Post de status (Somente texto)</p>
                       </div>
                     </div>
@@ -1035,24 +1063,70 @@ export default function GeneratePage() {
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground">Page</label>
-                <select
-                  value={pageId}
-                  onChange={(e) => setPageId(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"
-                >
-                  <option value="">Select a Page…</option>
-                  {pages.map((p) => (
-                    <option key={p.page_id} value={p.page_id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                {pages.length === 0 && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    No Pages found. Connect Facebook from Settings first.
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    Páginas de Destino ({selectedPageIds.length} selecionada{selectedPageIds.length === 1 ? "" : "s"})
+                  </label>
+                  {pages.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedPageIds.length === pages.length) {
+                          setSelectedPageIds([]);
+                        } else {
+                          setSelectedPageIds(pages.map((p) => p.page_id));
+                        }
+                      }}
+                      className="text-xs text-primary font-medium hover:underline cursor-pointer"
+                    >
+                      {selectedPageIds.length === pages.length ? "Desmarcar todas" : "Selecionar todas"}
+                    </button>
+                  )}
+                </div>
+
+                {pages.length === 0 ? (
+                  <p className="text-xs text-muted-foreground p-3 rounded-xl border border-dashed border-border bg-surface-2/40">
+                    Nenhuma Página encontrada. Conecte sua conta do Facebook nas Configurações.
                   </p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1 rounded-xl border border-border bg-surface-1/50">
+                    {pages.map((p) => {
+                      const isChecked = selectedPageIds.includes(p.page_id);
+                      return (
+                        <label
+                          key={p.page_id}
+                          className={cn(
+                            "flex items-center gap-2.5 p-2.5 rounded-lg border text-xs cursor-pointer transition select-none",
+                            isChecked
+                              ? "border-primary/60 bg-primary/10 text-foreground font-semibold shadow-xs"
+                              : "border-border/60 bg-background text-muted-foreground hover:bg-surface-2"
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedPageIds([...selectedPageIds, p.page_id]);
+                              } else {
+                                setSelectedPageIds(selectedPageIds.filter((id) => id !== p.page_id));
+                              }
+                            }}
+                            className="rounded border-border text-primary focus:ring-primary h-4 w-4"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate leading-tight">{p.name}</p>
+                            {p.category && (
+                              <p className="text-[10px] text-muted-foreground font-normal truncate">
+                                {p.category}
+                              </p>
+                            )}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
 

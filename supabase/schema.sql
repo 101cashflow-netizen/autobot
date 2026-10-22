@@ -205,3 +205,33 @@ alter table app_settings add column if not exists images_auto_post_enabled boole
 alter table app_settings add column if not exists images_posts_per_day smallint not null default 2;
 alter table app_settings add column if not exists images_posting_hours int[] not null default '{10,16}';
 alter table app_settings add column if not exists last_images_auto_post_at timestamptz;
+
+-- Multi-Page Token Support & Automatic Page-to-Page Reposting
+alter table pages_cache add column if not exists access_token text;
+
+create table if not exists repost_logs (
+  id uuid primary key default gen_random_uuid(),
+  source_page_id text not null,
+  source_page_name text,
+  source_post_id text not null,
+  target_page_id text not null,
+  target_page_name text,
+  target_post_id text,
+  post_title text,
+  status text not null default 'success', -- 'success' | 'failed'
+  error_message text,
+  reposted_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists repost_logs_source_target_idx on repost_logs (source_post_id, target_page_id);
+create index if not exists repost_logs_created_idx on repost_logs (created_at desc);
+
+alter table app_settings add column if not exists repost_enabled boolean not null default false;
+alter table app_settings add column if not exists repost_source_page_id text;
+alter table app_settings add column if not exists repost_source_page_name text;
+alter table app_settings add column if not exists repost_target_page_ids text[] not null default '{}';
+alter table app_settings add column if not exists repost_ai_rewrite boolean not null default true;
+alter table app_settings add column if not exists repost_ai_prompt text default '';
+alter table app_settings add column if not exists last_repost_check_at timestamptz;
+

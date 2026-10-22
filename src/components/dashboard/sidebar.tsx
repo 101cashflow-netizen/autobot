@@ -12,6 +12,7 @@ import {
   GearSix,
   VideoCamera,
   Images,
+  ShareFat,
 } from "@phosphor-icons/react/dist/ssr";
 import { Logo } from "@/components/logo";
 import { cn } from "@/lib/cn";
@@ -22,6 +23,7 @@ const NAV = [
   { href: "/dashboard/topics", label: "Banco de Temas", icon: Lightbulb },
   { href: "/dashboard/reels", label: "Vídeos & Reels", icon: VideoCamera },
   { href: "/dashboard/batch-images", label: "Lote de Imagens", icon: Images },
+  { href: "/dashboard/repost", label: "Repostagem", icon: ShareFat },
   { href: "/dashboard/queue", label: "Fila & Agendados", icon: ClockCountdown },
   { href: "/dashboard/history", label: "Histórico", icon: ListChecks },
   { href: "/dashboard/pages", label: "Páginas", icon: FlagBanner },

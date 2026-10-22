@@ -1,4 +1,4 @@
-import { publishPhoto, publishVideo, publishText, NoPageSelectedError } from "@/lib/facebook/client";
+import { publishPhoto, publishVideo, publishText, NoPageSelectedError, getPageToken } from "@/lib/facebook/client";
 import { getPost, updatePostRecord } from "@/lib/db/posts";
 import { getSettings } from "@/lib/db/settings";
 import { composeMessage } from "@/lib/types";
@@ -15,18 +15,25 @@ export async function publishPostNow(postId: string): Promise<Post> {
 
   const settings = await getSettings();
 
-  // A post carries the Page it was written for, but the token lives in
-  // settings, so a Page that is no longer the selected one cannot be posted to.
   const pageId = post.page_id ?? settings.default_page_id;
-  const pageToken =
-    post.page_id && post.page_id !== settings.default_page_id ? null : settings.default_page_token;
-
-  if (!pageId || !pageToken) {
+  if (!pageId) {
     return updatePostRecord(postId, {
       status: "failed",
       error_message: new NoPageSelectedError().message,
     });
   }
+
+  // Resolve page token: supports default page AND any other page the user manages!
+  const pageInfo = await getPageToken(pageId);
+  const pageToken = pageInfo?.token;
+
+  if (!pageToken) {
+    return updatePostRecord(postId, {
+      status: "failed",
+      error_message: `Não foi possível encontrar o token de acesso para a página ${post.page_name || pageId}.`,
+    });
+  }
+
 
   try {
     const isVideo = post.media_type === "video";

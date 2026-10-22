@@ -19,6 +19,7 @@ import {
   Camera,
   Lightning,
   Images,
+  ShareFat,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -2066,6 +2067,31 @@ function SettingsForm() {
               </button>
             ))}
           </div>
+        </div>
+      </Card>
+
+      {/* Repostagem Automática entre Páginas */}
+      <Card>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <ShareFat size={22} weight="bold" />
+            </div>
+            <div>
+              <h2 className="font-heading font-bold text-foreground">
+                Repostagem Automática entre Páginas
+              </h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Replique automaticamente publicações da Página Milionário para outras páginas com reescrita IA.
+              </p>
+            </div>
+          </div>
+
+          <Link href="/dashboard/repost">
+            <Button size="sm" className="text-xs">
+              Configurar Repostagem &rarr;
+            </Button>
+          </Link>
         </div>
       </Card>
 

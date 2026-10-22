@@ -208,3 +208,37 @@ export async function maybeRunBatchImagesAutopilot(): Promise<{
     return { ran: false, reason: err instanceof Error ? err.message : "publish_failed" };
   }
 }
+
+/**
+ * Autopilot for Automatic Reposting between Facebook Pages (e.g., from Página Milionário).
+ * Checks if auto-repost is enabled and configured, and processes any newly published items.
+ */
+export async function maybeRunAutoRepost(): Promise<{
+  ran: boolean;
+  repostResult?: import("@/lib/facebook/repost").RepostRunResult;
+  reason?: string;
+}> {
+  const settings = await getSettings();
+  if (!settings.repost_enabled) return { ran: false, reason: "disabled" };
+  if (!isFacebookConnected(settings)) return { ran: false, reason: "not_connected" };
+  if (!settings.repost_source_page_id || !settings.repost_target_page_ids?.length) {
+    return { ran: false, reason: "not_configured" };
+  }
+
+  // Throttle check: at most once every 15 minutes
+  if (settings.last_repost_check_at) {
+    const elapsedMinutes = (Date.now() - new Date(settings.last_repost_check_at).getTime()) / 60000;
+    if (elapsedMinutes < 15) {
+      return { ran: false, reason: "already_checked_recently" };
+    }
+  }
+
+  const { checkAndRepost } = await import("@/lib/facebook/repost");
+  try {
+    const result = await checkAndRepost({ limit: 5 });
+    return { ran: true, repostResult: result };
+  } catch (err) {
+    return { ran: false, reason: err instanceof Error ? err.message : "repost_failed" };
+  }
+}
+

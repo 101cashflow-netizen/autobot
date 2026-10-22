@@ -272,6 +272,17 @@ export async function GET(req: Request, ctx: Ctx) {
       return getPages(url.searchParams.get("refresh") === "1");
     }
 
+    if (route === "facebook/repost/logs") {
+      const db = supabaseAdmin();
+      const { data: logs, error } = await db
+        .from("repost_logs")
+        .select("*")
+        .order("reposted_at", { ascending: false })
+        .limit(50);
+      if (error) return json({ error: error.message }, 500);
+      return json({ logs: logs ?? [] });
+    }
+
     if (route === "topics") {
       const settings = await getSettings();
       const source = settings.topic_source ?? "mine";
@@ -357,8 +368,9 @@ const CreatePostBody = z.object({
   mediaType: z.enum(["image", "video", "text"]).default("image"),
   mediaUrl: z.string().url().optional().or(z.literal("")),
   linkUrl: z.string().url().optional().or(z.literal("")),
-  pageId: z.string().min(1),
-  pageName: z.string().min(1),
+  pageId: z.string().min(1).optional(),
+  pageName: z.string().min(1).optional(),
+  pageIds: z.array(z.string().min(1)).optional(),
   action: z.enum(["draft", "schedule", "post_now"]),
   scheduledAt: z.string().datetime().optional(),
 });
@@ -455,26 +467,53 @@ export async function POST(req: Request, ctx: Ctx) {
         return json({ error: "scheduledAt is required to schedule a post." }, 400);
       }
 
-      const post = await createPostRecord({
-        topic: b.topic,
-        title: b.title,
-        description: b.description,
-        hashtags: b.hashtags,
-        image_url: b.imageUrl || "",
-        image_source: b.imageSource || "ai",
-        media_type: b.mediaType,
-        media_url: b.mediaUrl || null,
-        link_url: b.linkUrl || null,
-        page_id: b.pageId,
-        page_name: b.pageName,
-        scheduled_at: b.action === "schedule" ? b.scheduledAt! : null,
-        status: b.action === "schedule" ? "scheduled" : "draft",
-      });
+      const targetPageIds =
+        b.pageIds && b.pageIds.length > 0
+          ? Array.from(new Set(b.pageIds))
+          : b.pageId
+            ? [b.pageId]
+            : [];
 
-      if (b.action === "post_now") {
-        return json({ post: await publishPostNow(post.id) });
+      if (targetPageIds.length === 0) {
+        return json({ error: "Selecione ao menos uma página." }, 400);
       }
-      return json({ post });
+
+      const { getPageToken } = await import("@/lib/facebook/client");
+      const createdPosts = [];
+
+      for (const pId of targetPageIds) {
+        const pageInfo = await getPageToken(pId).catch(() => null);
+        const resolvedPageName = pageInfo?.name || b.pageName || "Página";
+
+        const post = await createPostRecord({
+          topic: b.topic,
+          title: b.title,
+          description: b.description,
+          hashtags: b.hashtags,
+          image_url: b.imageUrl || "",
+          image_source: b.imageSource || "ai",
+          media_type: b.mediaType,
+          media_url: b.mediaUrl || null,
+          link_url: b.linkUrl || null,
+          page_id: pId,
+          page_name: resolvedPageName,
+          scheduled_at: b.action === "schedule" ? b.scheduledAt! : null,
+          status: b.action === "schedule" ? "scheduled" : "draft",
+        });
+
+        if (b.action === "post_now") {
+          const published = await publishPostNow(post.id);
+          createdPosts.push(published);
+        } else {
+          createdPosts.push(post);
+        }
+      }
+
+      return json({
+        post: createdPosts[0],
+        posts: createdPosts,
+        count: createdPosts.length,
+      });
     }
 
     if (route === "topics") {
@@ -649,6 +688,16 @@ export async function POST(req: Request, ctx: Ctx) {
       }
     }
 
+    if (route === "facebook/repost/sync") {
+      const { checkAndRepost } = await import("@/lib/facebook/repost");
+      try {
+        const result = await checkAndRepost({ force: true, limit: 10 });
+        return json(result);
+      } catch (err) {
+        return json({ error: err instanceof Error ? err.message : "Erro ao sincronizar e repostar." }, 500);
+      }
+    }
+
     if (route === "facebook/credentials") {
       const parsed = CredentialsBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) {
@@ -742,6 +791,12 @@ const SettingsBody = z.object({
   images_auto_post_enabled: z.boolean().optional(),
   images_posts_per_day: z.number().int().min(1).max(20).optional(),
   images_posting_hours: z.array(z.number().int().min(0).max(23)).min(1).max(24).optional(),
+  repost_enabled: z.boolean().optional(),
+  repost_source_page_id: z.string().trim().nullable().optional(),
+  repost_source_page_name: z.string().trim().nullable().optional(),
+  repost_target_page_ids: z.array(z.string().trim()).optional(),
+  repost_ai_rewrite: z.boolean().optional(),
+  repost_ai_prompt: z.string().trim().nullable().optional(),
 });
 
 const UpdateTopicBody = z.object({
@@ -950,17 +1005,31 @@ export async function DELETE(req: Request, ctx: Ctx) {
 async function getPages(refresh: boolean) {
   const db = supabaseAdmin();
   try {
-    if (refresh) {
+    let shouldFetch = refresh;
+    if (!shouldFetch) {
+      const { count } = await db.from("pages_cache").select("*", { count: "exact", head: true });
+      if (!count || count === 0) shouldFetch = true;
+    }
+
+    if (shouldFetch) {
       const pages = await fetchPages();
       if (pages.length > 0) {
         await db.from("pages_cache").delete().neq("page_id", "");
-        await db
-          .from("pages_cache")
-          .insert(pages.map((p) => ({ page_id: p.id, name: p.name, category: p.category })));
+        await db.from("pages_cache").insert(
+          pages.map((p) => ({
+            page_id: p.id,
+            name: p.name,
+            category: p.category,
+            access_token: p.access_token,
+          }))
+        );
       }
     }
 
-    const { data: cached } = await db.from("pages_cache").select("*").order("name");
+    const { data: cached } = await db
+      .from("pages_cache")
+      .select("page_id, name, category, fetched_at")
+      .order("name");
     const settings = await getSettings();
     return json({ pages: cached ?? [], defaultPageId: settings.default_page_id });
   } catch (err) {
@@ -1039,6 +1108,18 @@ async function oauthCallback(req: Request, url: URL) {
 
     try {
       const pages = await fetchPages();
+      if (pages.length > 0) {
+        const db = supabaseAdmin();
+        await db.from("pages_cache").delete().neq("page_id", "");
+        await db.from("pages_cache").insert(
+          pages.map((p) => ({
+            page_id: p.id,
+            name: p.name,
+            category: p.category,
+            access_token: p.access_token,
+          }))
+        );
+      }
       if (pages.length === 1) {
         await updateSettings({
           default_page_id: pages[0].id,
@@ -1085,7 +1166,7 @@ async function runCron(req: Request, url: URL) {
     queueResults.push({ id: result.id, status: result.status });
   }
 
-  const { maybeRunReelsAutopilot, maybeRunBatchImagesAutopilot } = await import("@/lib/autopilot");
+  const { maybeRunReelsAutopilot, maybeRunBatchImagesAutopilot, maybeRunAutoRepost } = await import("@/lib/autopilot");
   return json({
     ok: true,
     processedFromQueue: queueResults.length,
@@ -1093,5 +1174,6 @@ async function runCron(req: Request, url: URL) {
     autopilot: await maybeRunAutopilot(),
     reelsAutopilot: await maybeRunReelsAutopilot(),
     batchImagesAutopilot: await maybeRunBatchImagesAutopilot(),
+    repostAutopilot: await maybeRunAutoRepost(),
   });
 }
